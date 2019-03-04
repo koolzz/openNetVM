@@ -43,6 +43,7 @@
 
 #include <inttypes.h>
 #include <rte_mempool.h>
+#include <rte_ether.h>
 
 struct port_info;
 struct rte_mbuf;
@@ -52,6 +53,14 @@ struct ipv4_hdr;
 
 #define IP_PROTOCOL_TCP 6
 #define IP_PROTOCOL_UDP 17
+#define PROTO_UDP 0x11
+#define IPV4_VERSION_IHL 69
+#define IPV4_TTL 64
+#define UDP_SAMPLE_SRC_PORT 12345
+#define UDP_SAMPLE_DST_PORT 54321
+#define IPV4_SAMPLE_SRC (uint32_t)IPv4(10,0,0,1)
+#define IPV4_SAMPLE_DST (uint32_t)IPv4(10,0,0,2)
+#define SAMPLE_NIC_PORT 0
 
 #define SUPPORTS_IPV4_CHECKSUM_OFFLOAD (1<<0)
 #define SUPPORTS_TCP_CHECKSUM_OFFLOAD (1<<1)
@@ -155,5 +164,26 @@ onvm_pkt_get_checksum_offload_flags(uint8_t port_id);
 
 void
 onvm_pkt_set_checksums(struct rte_mbuf* pkt);
+
+int
+onvm_pkt_fill_ipv4(struct ipv4_hdr *iph, uint32_t src, uint32_t dst, uint8_t l4_proto);
+
+int
+onvm_pkt_fill_ether(struct ether_hdr *eth_hdr, int port, struct ether_addr *dst_mac_addr, struct port_info *ports);
+
+int
+onvm_pkt_swap_ether_hdr(struct ether_hdr *ether_hdr);
+
+int
+onvm_pkt_swap_ip_hdr(struct ipv4_hdr *ip_hdr);
+
+int
+onvm_pkt_swap_tcp_hdr(struct tcp_hdr *tcp_hdr);
+
+struct rte_mbuf *
+onvm_pkt_generate_tcp(struct rte_mempool *pktmbuf_pool, struct tcp_hdr *tcp_hdr,
+	  struct ipv4_hdr *iph, struct ether_hdr *eth_hdr,
+	  uint8_t *options, size_t option_len,
+	  uint8_t *payload, size_t payload_len);
 
 #endif  // _ONVM_PKT_HELPER_H_"

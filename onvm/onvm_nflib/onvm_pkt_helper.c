@@ -292,9 +292,9 @@ onvm_pkt_print_ipv4(struct ipv4_hdr* hdr) {
 
         printf("Header Checksum: %" PRIu16 "\n", hdr->hdr_checksum);
         printf("Source IP: %" PRIu32 " (%" PRIu8 ".%" PRIu8 ".%" PRIu8 ".%" PRIu8 ")\n", hdr->src_addr,
-                hdr->src_addr & 0xFF, (hdr->src_addr >> 8) & 0xFF, (hdr->src_addr >> 16) & 0xFF, (hdr->src_addr >> 24) & 0xFF);
+                        hdr->src_addr & 0xFF, (hdr->src_addr >> 8) & 0xFF, (hdr->src_addr >> 16) & 0xFF, (hdr->src_addr >> 24) & 0xFF);
         printf("Destination IP: %" PRIu32 " (%" PRIu8 ".%" PRIu8 ".%" PRIu8 ".%" PRIu8 ")\n", hdr->dst_addr,
-                hdr->dst_addr & 0xFF, (hdr->dst_addr >> 8) & 0xFF, (hdr->dst_addr >> 16) & 0xFF, (hdr->dst_addr >> 24) & 0xFF);
+                        hdr->dst_addr & 0xFF, (hdr->dst_addr >> 8) & 0xFF, (hdr->dst_addr >> 16) & 0xFF, (hdr->dst_addr >> 24) & 0xFF);
 }
 
 void onvm_pkt_print_ether(struct ether_hdr* hdr) {
@@ -460,6 +460,7 @@ onvm_pkt_set_checksums(struct rte_mbuf *pkt) {
 
                 if (tcp != NULL) {
                         tcp->cksum = 0;
+                        //pkt->ol_flags |= PKT_TX_IP_CKSUM;
                         pkt->l4_len = (tcp->data_off >> 4) & 0b1111;
 
                         if (hw_cksum_support & SUPPORTS_TCP_CHECKSUM_OFFLOAD) {
@@ -491,4 +492,152 @@ onvm_pkt_set_checksums(struct rte_mbuf *pkt) {
                         ip->hdr_checksum = calculate_ip_cksum(ip, pkt->l3_len);
                 }
         }
+}
+
+int
+onvm_pkt_fill_ipv4(struct ipv4_hdr *iph, uint32_t src, uint32_t dst, uint8_t l4_proto)
+{
+        iph->src_addr = rte_cpu_to_be_32(src);
+        iph->dst_addr = rte_cpu_to_be_32(dst);
+        iph->next_proto_id = l4_proto;
+        iph->version_ihl = IPV4_VERSION_IHL;
+        iph->time_to_live = IPV4_TTL;
+        iph->hdr_checksum = 0;
+
+        return 0;
+}
+
+int
+onvm_pkt_fill_ether(struct ether_hdr *eth_hdr, int port, struct ether_addr *dst_mac_addr, struct port_info *ports)
+{
+        int i;
+
+        /* Set ether header */
+        ether_addr_copy(&ports->mac[port], &eth_hdr->s_addr);
+        eth_hdr->ether_type = rte_be_to_cpu_16(ETHER_TYPE_IPv4);
+        for (i = 0; i < ETHER_ADDR_LEN; ++i) {
+                eth_hdr->d_addr.addr_bytes[i] = dst_mac_addr->addr_bytes[i];
+        }
+
+        return 0;
+}
+
+int onvm_pkt_swap_ether_hdr(struct ether_hdr *ether_hdr) {
+        int i;
+        struct ether_addr temp_ether_addr;
+
+        for (i = 0; i < ETHER_ADDR_LEN; ++i) {
+                temp_ether_addr.addr_bytes[i] = ether_hdr->s_addr.addr_bytes[i];
+                ether_hdr->s_addr.addr_bytes[i] = ether_hdr->d_addr.addr_bytes[i];
+        }
+
+        for (i = 0; i < ETHER_ADDR_LEN; ++i) {
+                ether_hdr->d_addr.addr_bytes[i] = temp_ether_addr.addr_bytes[i];
+        }
+
+        return 0;
+}
+
+int
+onvm_pkt_swap_ip_hdr(struct ipv4_hdr *ip_hdr) {
+        uint32_t temp_ip;
+
+        temp_ip = ip_hdr->src_addr;
+        ip_hdr->src_addr = ip_hdr->dst_addr;
+        ip_hdr->dst_addr = temp_ip;
+
+        return 0;        
+}
+
+int onvm_pkt_swap_tcp_hdr(struct tcp_hdr *tcp_hdr) {
+        uint16_t temp_port;
+       
+        temp_port = tcp_hdr->src_port;
+        tcp_hdr->src_port = tcp_hdr->dst_port;
+        tcp_hdr->dst_port = temp_port;
+
+        return 0;       
+}
+
+struct rte_mbuf *
+onvm_pkt_generate_tcp(struct rte_mempool *pktmbuf_pool, struct tcp_hdr *tcp_hdr,
+                struct ipv4_hdr *iph, struct ether_hdr *eth_hdr,
+                uint8_t *options, size_t option_len,
+                uint8_t *payload, size_t payload_len)
+{
+        struct rte_mbuf *pkt;
+        uint8_t *pkt_payload;
+        uint8_t *tcp_options;
+        struct tcp_hdr *pkt_tcp_hdr;
+        struct ipv4_hdr *pkt_iph;
+        struct ether_hdr *pkt_eth_hdr;
+
+        printf("Forming TCP packet, option_len %zu, payload_len %zu\n", option_len, payload_len); 
+
+        pkt = rte_pktmbuf_alloc(pktmbuf_pool);
+        if (pkt == NULL) {
+                return NULL;
+        }
+
+        pkt->ol_flags = PKT_TX_IP_CKSUM | PKT_TX_IPV4 | PKT_TX_TCP_CKSUM;
+        pkt->l2_len = sizeof(struct ether_hdr);
+        pkt->l3_len = sizeof(struct ipv4_hdr);
+
+        if (payload_len > 0) {
+                /* Set payload data */
+                pkt_payload = (uint8_t *)rte_pktmbuf_prepend(pkt, payload_len);
+                if (pkt_payload == NULL) {
+                        printf("Failed to prepend data. Consider splitting up the packet.\n");
+                        return NULL;
+                }
+                rte_memcpy(pkt_payload, payload, payload_len);
+        }
+
+        if (option_len > 0) {
+                //int option_len = 20;
+                /* Set payload data */
+                //options = (uint8_t *)rte_pktmbuf_prepend(pkt, option_len);
+                tcp_options = (uint8_t *)rte_pktmbuf_prepend(pkt, option_len);
+                if (tcp_options == NULL) {
+                        printf("Failed to prepend data. Consider splitting up the packet.\n");
+                        return NULL;
+                }
+                rte_memcpy(tcp_options, options, option_len);
+        }
+
+        /* Set tcp hdr */
+        printf("TCP SIZE -> %lu\n", sizeof(*tcp_hdr));
+        pkt_tcp_hdr = (struct tcp_hdr *)rte_pktmbuf_prepend(pkt, sizeof(*tcp_hdr));
+        if (pkt_tcp_hdr == NULL) {
+                printf("Failed to prepend data. Consider splitting up the packet.\n");
+                return NULL;
+        }
+        rte_memcpy(pkt_tcp_hdr, tcp_hdr, sizeof(*tcp_hdr));// + option_len);
+
+        /* Set ip hdr */
+        pkt_iph = (struct ipv4_hdr *)rte_pktmbuf_prepend(pkt, sizeof(*iph));
+        if (pkt_iph == NULL) {
+                printf("Failed to prepend data. Consider splitting up the packet.\n");
+                return NULL;
+        }
+        rte_memcpy(pkt_iph, iph, sizeof(*iph));
+
+        /* Set eth hdr */
+        pkt_eth_hdr = (struct ether_hdr *)rte_pktmbuf_prepend(pkt, sizeof(*eth_hdr));
+        if (pkt_eth_hdr == NULL) {
+                printf("Failed to prepend data. Consider splitting up the packet.\n");
+                return NULL;
+        }
+        rte_memcpy(pkt_eth_hdr, eth_hdr, sizeof(*eth_hdr));
+
+        pkt->pkt_len = pkt->data_len;
+        iph->total_length = rte_cpu_to_be_16(/*pkt->pkt_len*/payload_len + option_len + sizeof(struct tcp_hdr) + sizeof(struct ipv4_hdr) - sizeof(struct ether_hdr));
+        printf("Pkt len %d, total iph len %lu\n", pkt->pkt_len, payload_len + option_len + sizeof(struct tcp_hdr) + sizeof(struct ipv4_hdr) - sizeof(struct ether_hdr));
+
+        /* Handle checksuming */
+        //pkt->l3_len = (pkt_iph->version_ihl & 0b1111) * 4;
+        //onvm_pkt_set_checksums(pkt);
+        //tcp_hdr->dgram_cksum = rte_ipv4_phdr_cksum((struct ipv4_hdr *)iph, pkt->ol_flags);
+
+        return pkt;
 }
