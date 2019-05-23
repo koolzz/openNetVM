@@ -44,6 +44,30 @@ package.path = package.path ..";?.lua;test/?.lua;app/?.lua;"
 
 require "Pktgen"
 
+local function doWait(port, waitTime)
+    local idx;
+
+   pktgen.delay(1000);
+
+   if ( waitTime == 0 ) then
+       return;
+   end
+   waitTime = waitTime - 1;
+
+    -- Try to wait for the total number of packets to be sent.
+    local idx = 0;
+    while( idx < waitTime ) do
+
+        idx = idx + 1;
+
+        local sending = pktgen.isSending(port);
+        if ( sending[tonumber(port)] == "n" ) then
+            break;
+        end
+        pktgen.delay(1000);
+    end
+end
+
 printf("Lua Version      : %s\n", pktgen.info.Lua_Version);
 printf("Pktgen Version   : %s\n", pktgen.info.Pktgen_Version);
 printf("Pktgen Copyright : %s\n", pktgen.info.Pktgen_Copyright);
@@ -71,8 +95,11 @@ pktgen.set("all", "size", 64)
 pktgen.set("all", "burst", 32);
 pktgen.set("all", "sport", 1234);
 pktgen.set("all", "dport", 1234);
-pktgen.set("all", "count", 100000000);
+pktgen.set("all", "count", 1000000000);
 pktgen.set("all", "rate",100);
 
 pktgen.vlan_id("all", "start", 1);
 
+pktgen.start("all");
+doWait("all", 30);
+pktgen.quit();
