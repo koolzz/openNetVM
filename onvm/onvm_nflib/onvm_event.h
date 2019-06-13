@@ -146,8 +146,9 @@ subscribe_nf(struct event_tree_node *event, uint16_t id, uint16_t flow_id) {
         event->subscribers[event->subscriber_cnt] = gen_nf_subscriber();
         event->subscribers[event->subscriber_cnt]->id = id;
         event->subscribers[event->subscriber_cnt]->flows[flow_id] = flow_id;
+        event->subscriber_cnt++;
 
-        for (i = 0; i < MAX_EVENTS; i++) {
+        for (i = 0; i < event->children_cnt; i++) {
                 subscribe_nf(event->children[i], id, flow_id);
         }
 }
