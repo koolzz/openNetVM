@@ -180,11 +180,20 @@ nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
 
 void
 nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
-        struct event_tree *tree;
-        tree = rte_zmalloc("Main event tree", sizeof(struct event_tree), 0);
+        struct event_tree_node *root_node;
+        root_node = gen_event_tree_node();
         PKT_EVENT = gen_event_tree_node();
-        tree->children[0] = (void*) PKT_EVENT;
-        nf_local_ctx->nf->data = (void *)tree;
+        add_event_node_child(root_node, PKT_EVENT);
+        PKT_TCP_EVENT = gen_event_tree_node();
+        add_event_node_child(PKT_EVENT, PKT_TCP_EVENT);
+        PKT_TCP_SYN_EVENT = gen_event_tree_node();
+        PKT_TCP_FIN_EVENT = gen_event_tree_node();
+        PKT_TCP_DPI_EVENT = gen_event_tree_node();
+        add_event_node_child(PKT_TCP_EVENT, PKT_TCP_SYN_EVENT);
+        add_event_node_child(PKT_TCP_EVENT, PKT_TCP_FIN_EVENT);
+        add_event_node_child(PKT_TCP_EVENT, PKT_TCP_DPI_EVENT);
+        
+        nf_local_ctx->nf->data = (void *)root_node;
 }
 
 int
