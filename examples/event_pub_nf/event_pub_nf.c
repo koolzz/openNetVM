@@ -59,35 +59,12 @@
 
 #define NF_TAG "simple_forward"
 
-/*****************EVENT TYPES************************/
-struct event_tree_node *ROOT_EVENT;
-
-struct event_tree_node *PKT_EVENT;
-struct event_tree_node *PKT_TCP_EVENT;
-struct event_tree_node *PKT_TCP_SYN_EVENT;
-struct event_tree_node *PKT_TCP_FIN_EVENT;
-struct event_tree_node *PKT_TCP_DPI_EVENT;
-
-struct event_tree_node *FLOW_EVENT;
-struct event_tree_ndoe *FLOW_TCP_EVENT;
-struct event_tree_node *FLOW_TCP_TERM_EVENT;
-
-struct event_tree_node *STATS_EVENT;
-
-struct event_tree_node *FLOW_REQ_EVENT;
-
-struct event_tree_node *FLOW_DEST_EVENT;
-
-struct event_tree_node *DATA_RDY_EVENT;
-/****************************************************/
-struct event_tree_node **events;
-
 /* number of package between each print */
 static uint32_t print_delay = 1000000;
 
 static uint32_t destination;
 
-void nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx);
+struct event_tree_node **events;
 
 void nf_setup(struct onvm_nf_local_ctx *nf_local_ctx);
 
@@ -191,45 +168,22 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
         meta->destination = destination;
         return 0;
 }
-void
-nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
-        struct event_msg *event_msg = (struct event_msg*)msg_data;
-
-        nf_local_ctx->nf = nf_local_ctx->nf;
-        if (event_msg->type == SUBSCRIBE) {
-                struct event_subscribe_data *msg = (struct event_subscribe_data *)event_msg->data;
-                subscribe_nf(msg->event, msg->id, msg->flow_id);
-        } else if (event_msg->type == RETRIEVE) {
-                struct event_retrieve_data *data = (struct event_retrieve_data*)event_msg->data;
-                data->events = events;
-                data->done = 1;
-        } else {
-                printf("Recieved unknown event msg type - %d\n", event_msg->type);
-        }
-}
 
 void
 nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
-        events = (struct event_tree_node **) rte_calloc("root event", MAX_EVENTS, sizeof(struct event_tree_node *), 0);
+        printf("Hi boi %d\n", nf_local_ctx->nf->instance_id);
 
-        ROOT_EVENT = gen_event_tree_node(ROOT_EVENT_ID);
-        PKT_EVENT = gen_event_tree_node(PKT_EVENT_ID);
-        add_event_node_child(ROOT_EVENT, PKT_EVENT);
-        PKT_TCP_EVENT = gen_event_tree_node(PKT_TCP_EVENT_ID);
-        add_event_node_child(PKT_EVENT, PKT_TCP_EVENT);
-        PKT_TCP_SYN_EVENT = gen_event_tree_node(PKT_TCP_SYN_EVENT_ID);
-        PKT_TCP_FIN_EVENT = gen_event_tree_node(PKT_TCP_FIN_EVENT_ID);
-        PKT_TCP_DPI_EVENT = gen_event_tree_node(PKT_TCP_DPI_EVENT_ID);
-        add_event_node_child(PKT_TCP_EVENT, PKT_TCP_SYN_EVENT);
-        add_event_node_child(PKT_TCP_EVENT, PKT_TCP_FIN_EVENT);
-        add_event_node_child(PKT_TCP_EVENT, PKT_TCP_DPI_EVENT);
-        
-        nf_local_ctx->nf->data = (void *)ROOT_EVENT;
+        struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
+        msg->type = RETRIEVE;
+        struct event_retrieve_data *data = rte_zmalloc("ev ret data", sizeof(struct event_retrieve_data), 0);
+        msg->data = (void *)data;
+        onvm_nflib_send_msg_to_nf(1, (void*)msg);
 
-        events[ROOT_EVENT_ID] = ROOT_EVENT;
-        events[PKT_EVENT_ID] = PKT_EVENT;
-        events[PKT_TCP_EVENT_ID] = PKT_TCP_EVENT;
+        while (data->done != 1)
+                sleep(1);
 
+        printf("Children of root    = %d, subs = %d\n", data->events[ROOT_EVENT_ID]->children_cnt, data->events[ROOT_EVENT_ID]->subscriber_cnt);
+        printf("Children of pkt tcp = %d, subs = %d\n", data->events[PKT_TCP_EVENT_ID]->children_cnt, data->events[PKT_TCP_EVENT_ID]->subscriber_cnt);
 }
 
 int
@@ -246,7 +200,6 @@ main(int argc, char *argv[]) {
         nf_function_table = onvm_nflib_init_nf_function_table();
         nf_function_table->pkt_handler = &packet_handler;
         nf_function_table->setup = &nf_setup;
-        nf_function_table->msg_handler = &nf_msg_handler;
 
         if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
                 onvm_nflib_stop(nf_local_ctx);

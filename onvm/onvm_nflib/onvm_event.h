@@ -50,21 +50,46 @@
 #define MAX_FLOWS 64
 #define MAX_SUBSCRIBERS 64
 
-#define SUBSCRIBE 1
+#define RETRIEVE 1
+#define SUBSCRIBE 2
 
-/*
-#define PKT_EVENT_ID 1
-#define PKT_TCP_EVENT_ID 2
-#define PKT_TCP_SYN_EVENT_ID 3
-#define PKT_TCP_FIN_EVENT_ID 4
-#define PKT_UDP_EVENT_ID 5
-*/
+/*****************EVENT IDS************************/
+#define ROOT_EVENT_ID 1
 
-struct event_modify_msg {
+#define PKT_EVENT_ID 2
+#define PKT_TCP_EVENT_ID 3
+#define PKT_TCP_SYN_EVENT_ID 4
+#define PKT_TCP_FIN_EVENT_ID 5
+#define PKT_TCP_DPI_EVENT_ID 6
+
+#define FLOW_EVENT_ID 7
+#define FLOW_TCP_EVENT_ID 8
+#define FLOW_TCP_TERM_EVENT_ID 9
+
+#define STATS_EVENT_ID 10
+
+#define FLOW_REQ_EVENT_ID 11
+#define FLOW_DEST_EVENT_ID 12
+
+#define DATA_RDY_EVENT_ID 13
+/****************************************************/
+
+struct event_retrieve_data {
+        //int event_id;
+        struct event_tree_node **events;
+        int done;
+};
+
+struct event_subscribe_data {
         int op; // subscribe or something else
         struct event_tree_node *event;
         uint16_t id;
         uint16_t flow_id;
+};
+
+struct event_msg {
+        int type; //retrieve or subscribe
+        void *data;
 };
 
 struct nf_subscriber {
@@ -85,27 +110,7 @@ struct event_tree {
         struct onvm_tree_node *children[MAX_EVENTS]; // sub events
 };
 
-/*****************EVENT TYPES************************/
-struct event_tree_node *PKT_EVENT;
-struct event_tree_node *PKT_TCP_EVENT;
-struct event_tree_node *PKT_TCP_SYN_EVENT;
-struct event_tree_node *PKT_TCP_FIN_EVENT;
-struct event_tree_node *PKT_TCP_DPI_EVENT;
-
-struct event_tree_node *FLOW_EVENT;
-struct event_tree_ndoe *FLOW_TCP_EVENT;
-struct event_tree_node *FLOW_TCP_TERM_EVENT;
-
-struct event_tree_node *STATS_EVENT;
-
-struct event_tree_node *FLOW_REQ_EVENT;
-
-struct event_tree_node *FLOW_DEST_EVENT;
-
-struct event_tree_node *DATA_RDY_EVENT;
-/****************************************************/
-
-struct event_tree_node *gen_event_tree_node(void);
+struct event_tree_node *gen_event_tree_node(int event_id);
 struct nf_subscriber *gen_nf_subscriber(void);
 void subscribe_nf(struct event_tree_node *event, uint16_t id, uint16_t flow_id);
 void print_targets(struct event_tree_node *event);
@@ -113,10 +118,10 @@ void add_event_node_child(struct event_tree_node *parent, struct event_tree_node
 int subscribed_to_event(struct event_tree_node *event, uint16_t nf_id, uint16_t flow_id);
 
 struct event_tree_node *
-gen_event_tree_node(void) {
+gen_event_tree_node(int event_id) {
         struct event_tree_node *event;
         event = rte_zmalloc("event_node", sizeof(struct event_tree_node), 0);
-        //event->children = rte_calloc("event_node_children", MAX_EVENTS, sizeof(struct *), 0);
+        event->event_id = event_id;
 
         return event;
 }
