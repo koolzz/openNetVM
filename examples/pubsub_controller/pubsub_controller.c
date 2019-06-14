@@ -203,6 +203,11 @@ nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
                 struct event_retrieve_data *data = (struct event_retrieve_data*)event_msg->data;
                 data->events = events;
                 data->done = 1;
+        } else if (event_msg->type == PUBLISH) {
+                struct event_publish_data *data = (struct event_publish_data*)event_msg->data;
+                add_event(ROOT_EVENT, data->event);
+                events[data->event->event_id] = data->event;
+                data->done = 1;
         } else {
                 printf("Recieved unknown event msg type - %d\n", event_msg->type);
         }
@@ -214,7 +219,13 @@ nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
 
         ROOT_EVENT = gen_event_tree_node(ROOT_EVENT_ID);
         PKT_EVENT = gen_event_tree_node(PKT_EVENT_ID);
+        FLOW_EVENT = gen_event_tree_node(FLOW_EVENT_ID);
         add_event_node_child(ROOT_EVENT, PKT_EVENT);
+        add_event_node_child(ROOT_EVENT, FLOW_EVENT);
+        events[ROOT_EVENT_ID] = ROOT_EVENT;
+        events[PKT_EVENT_ID] = PKT_EVENT;
+        events[FLOW_EVENT_ID] =  FLOW_EVENT;
+        /*
         PKT_TCP_EVENT = gen_event_tree_node(PKT_TCP_EVENT_ID);
         add_event_node_child(PKT_EVENT, PKT_TCP_EVENT);
         PKT_TCP_SYN_EVENT = gen_event_tree_node(PKT_TCP_SYN_EVENT_ID);
@@ -223,15 +234,10 @@ nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
         add_event_node_child(PKT_TCP_EVENT, PKT_TCP_SYN_EVENT);
         add_event_node_child(PKT_TCP_EVENT, PKT_TCP_FIN_EVENT);
         add_event_node_child(PKT_TCP_EVENT, PKT_TCP_DPI_EVENT);
-        FLOW_EVENT = gen_event_tree_node(FLOW_EVENT_ID);
-        add_event_node_child(ROOT_EVENT, FLOW_EVENT);
-        nf_local_ctx->nf->data = (void *)ROOT_EVENT;
 
-        events[ROOT_EVENT_ID] = ROOT_EVENT;
-        events[PKT_EVENT_ID] = PKT_EVENT;
         events[PKT_TCP_EVENT_ID] = PKT_TCP_EVENT;
-        events[FLOW_EVENT_ID] =  FLOW_EVENT;
-
+        */
+        nf_local_ctx->nf->data = (void *)ROOT_EVENT;
 }
 
 int

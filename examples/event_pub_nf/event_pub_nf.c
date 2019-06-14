@@ -169,6 +169,7 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
         return 0;
 }
 
+
 void
 nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
         printf("Hi boi %d\n", nf_local_ctx->nf->instance_id);
@@ -182,8 +183,12 @@ nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
         while (data->done != 1)
                 sleep(1);
 
+       
+        publish_new_event(PKT_TCP_EVENT_ID);
+        publish_new_event(PKT_TCP_FIN_EVENT_ID);
+
         //wait for the other NF to subscribe
-        sleep(10);
+        sleep(5);
 
         printf("Children of root    = %d, subs = %d\n", data->events[ROOT_EVENT_ID]->children_cnt, data->events[ROOT_EVENT_ID]->subscriber_cnt);
         printf("Children of pkt tcp = %d, subs = %d\n", data->events[PKT_TCP_EVENT_ID]->children_cnt, data->events[PKT_TCP_EVENT_ID]->subscriber_cnt);

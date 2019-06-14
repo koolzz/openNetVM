@@ -49,29 +49,35 @@
 #define MAX_EVENTS 10000
 #define MAX_FLOWS 64
 #define MAX_SUBSCRIBERS 64
+#define MAX_DEPTH 16 // 64/4
 
 #define RETRIEVE 1
 #define SUBSCRIBE 2
+#define PUBLISH 3
+
+uint64_t EVENT_BITMASK;
 
 /*****************EVENT IDS************************/
-#define ROOT_EVENT_ID 1
+// 4 bits represent a prefix, 0 is reserved => 15 max prefix variations
+#define ROOT_EVENT_ID 0
 
-#define PKT_EVENT_ID 2
-#define PKT_TCP_EVENT_ID 3
-#define PKT_TCP_SYN_EVENT_ID 4
-#define PKT_TCP_FIN_EVENT_ID 5
-#define PKT_TCP_DPI_EVENT_ID 6
+#define PKT_EVENT_ID 0x1
+#define PKT_TCP_EVENT_ID (PKT_EVENT_ID + (0x1<<4))
+#define PKT_TCP_SYN_EVENT_ID (PKT_TCP_EVENT_ID + (0x1<<8))
+#define PKT_TCP_FIN_EVENT_ID (PKT_TCP_EVENT_ID + (0x2<<8))
+#define PKT_TCP_DPI_EVENT_ID (PKT_TCP_EVENT_ID + (0x3<<8))
 
-#define FLOW_EVENT_ID 7
-#define FLOW_TCP_EVENT_ID 8
-#define FLOW_TCP_TERM_EVENT_ID 9
+#define FLOW_EVENT_ID 0x2
+#define FLOW_TCP_EVENT_ID (FLOW_EVENT_ID + (0x1<<4))
+#define FLOW_TCP_TERM_EVENT_ID (FLOW_TCP_EVENT_ID + (0x1<<8))
 
-#define STATS_EVENT_ID 10
+#define STATS_EVENT_ID 0x3
 
-#define FLOW_REQ_EVENT_ID 11
-#define FLOW_DEST_EVENT_ID 12
+#define FLOW_REQ_EVENT_ID 0x4
 
-#define DATA_RDY_EVENT_ID 13
+#define FLOW_DEST_EVENT_ID 0x5
+
+#define DATA_RDY_EVENT_ID 0x6
 /****************************************************/
 
 struct event_retrieve_data {
@@ -87,6 +93,11 @@ struct event_subscribe_data {
         uint16_t flow_id;
 };
 
+struct event_publish_data {
+        struct event_tree_node *event;
+        int done;
+};
+
 struct event_msg {
         int type; //retrieve or subscribe
         void *data;
@@ -98,7 +109,7 @@ struct nf_subscriber {
 };
 
 struct event_tree_node {
-        int event_id;
+        uint64_t event_id;
         uint16_t children_cnt;
         uint16_t subscriber_cnt;
         struct event_tree_node *parent;
@@ -110,15 +121,18 @@ struct event_tree {
         struct onvm_tree_node *children[MAX_EVENTS]; // sub events
 };
 
-struct event_tree_node *gen_event_tree_node(int event_id);
+struct event_tree_node *gen_event_tree_node(uint64_t event_id);
 struct nf_subscriber *gen_nf_subscriber(void);
 void subscribe_nf(struct event_tree_node *event, uint16_t id, uint16_t flow_id);
 void print_targets(struct event_tree_node *event);
 void add_event_node_child(struct event_tree_node *parent, struct event_tree_node *child);
 int subscribed_to_event(struct event_tree_node *event, uint16_t nf_id, uint16_t flow_id);
+int add_event(struct event_tree_node *root, struct event_tree_node *child);
+void publish_new_event(uint64_t event_id);
+void publish_new_event(uint64_t event_id);
 
 struct event_tree_node *
-gen_event_tree_node(int event_id) {
+gen_event_tree_node(uint64_t event_id) {
         struct event_tree_node *event;
         event = rte_zmalloc("event_node", sizeof(struct event_tree_node), 0);
         event->event_id = event_id;
@@ -137,6 +151,29 @@ void
 add_event_node_child(struct event_tree_node *parent, struct event_tree_node *child) {
         parent->children[parent->children_cnt] = child;
         parent->children_cnt++;
+}
+
+int
+add_event(struct event_tree_node *root, struct event_tree_node *child) {
+        uint8_t i, prefix;
+        struct event_tree_node *cur;
+
+        if (child->event_id == 0) {
+                return -1;
+        }
+
+        cur = root;
+
+        for (i = 0; i < MAX_DEPTH; i++) {
+                prefix = (child->event_id >> i*4) & 0xF;
+                // if next prefix is 0, we've reached the end (0 isn't allowed for any prefix)
+                if (((child->event_id >> ((i+1)*4)) & 0xF) == 0)
+                        break;
+                // prefixes are 1 indexed, arrays are 0 indexed
+                cur = cur->children[prefix - 1];
+        }
+        add_event_node_child(cur, child);
+        return 0;
 }
 
 void
@@ -172,12 +209,22 @@ subscribed_to_event(struct event_tree_node *event, uint16_t nf_id, uint16_t flow
 void
 print_targets(struct event_tree_node *event) {
         int i;
-        printf("Send event %d to : ", event->event_id);
+        printf("Send event %" PRIu64" to : ", event->event_id);
         for (i = 0; i < MAX_EVENTS; i++) {
                 if (event->subscribers[i] != NULL)
                         printf("%d, ", event->subscribers[i]->id);
         }
         printf("\n");
+}
+
+void
+publish_new_event(uint64_t event_id) {
+        struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
+        msg->type = PUBLISH;
+        struct event_publish_data *data = rte_zmalloc("ev pub data", sizeof(struct event_publish_data), 0);
+        data->event = gen_event_tree_node(event_id);
+        msg->data = (void *)data;
+        onvm_nflib_send_msg_to_nf(1, (void*)msg);
 }
 
 #endif  // _ONVM_EVENT_H_

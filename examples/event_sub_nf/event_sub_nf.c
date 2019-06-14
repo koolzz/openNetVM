@@ -195,6 +195,9 @@ main(int argc, char *argv[]) {
         struct onvm_nf_function_table *nf_function_table;
         int arg_offset;
 
+        printf("tcp event = %d\n",  PKT_TCP_EVENT_ID);
+        printf("tcp syn = %d\n", PKT_TCP_SYN_EVENT_ID);
+        printf("tcp fin = %d\n", PKT_TCP_FIN_EVENT_ID);
         const char *progname = argv[0];
 
         nf_local_ctx = onvm_nflib_init_nf_local_ctx();
