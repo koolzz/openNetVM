@@ -223,12 +223,14 @@ nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
         add_event_node_child(PKT_TCP_EVENT, PKT_TCP_SYN_EVENT);
         add_event_node_child(PKT_TCP_EVENT, PKT_TCP_FIN_EVENT);
         add_event_node_child(PKT_TCP_EVENT, PKT_TCP_DPI_EVENT);
-        
+        FLOW_EVENT = gen_event_tree_node(FLOW_EVENT_ID);
+        add_event_node_child(ROOT_EVENT, FLOW_EVENT);
         nf_local_ctx->nf->data = (void *)ROOT_EVENT;
 
         events[ROOT_EVENT_ID] = ROOT_EVENT;
         events[PKT_EVENT_ID] = PKT_EVENT;
         events[PKT_TCP_EVENT_ID] = PKT_TCP_EVENT;
+        events[FLOW_EVENT_ID] =  FLOW_EVENT;
 
 }
 

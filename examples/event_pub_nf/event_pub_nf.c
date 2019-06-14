@@ -188,6 +188,12 @@ nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
         printf("Children of root    = %d, subs = %d\n", data->events[ROOT_EVENT_ID]->children_cnt, data->events[ROOT_EVENT_ID]->subscriber_cnt);
         printf("Children of pkt tcp = %d, subs = %d\n", data->events[PKT_TCP_EVENT_ID]->children_cnt, data->events[PKT_TCP_EVENT_ID]->subscriber_cnt);
         printf("Children of flow    = %d, subs = %d\n", data->events[FLOW_EVENT_ID]->children_cnt, data->events[FLOW_EVENT_ID]->subscriber_cnt);
+
+        printf("Is NF 2 subbed to root - %d (should be no)\n", subscribed_to_event(data->events[ROOT_EVENT_ID], 2, 0));
+        printf("Is NF 3 subbed to root - %d (should be yes)\n", subscribed_to_event(data->events[ROOT_EVENT_ID], 3, 0));
+        printf("Is NF 3 subbed to pkt tcp - %d (should be yes)\n", subscribed_to_event(data->events[PKT_TCP_EVENT_ID], 3, 0));
+        printf("Is NF 4 subbed to pkt tcp - %d (should be yes)\n", subscribed_to_event(data->events[PKT_TCP_EVENT_ID], 4, 0));
+        printf("Is NF 4 subbed to pkt tcp fin - %d (should be yes)\n", subscribed_to_event(data->events[PKT_TCP_FIN_EVENT_ID], 4, 0));
 }
 
 int
