@@ -201,7 +201,7 @@ nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
                 subscribe_nf(msg->event, msg->id, msg->flow_id);
         } else if (event_msg->type == RETRIEVE) {
                 struct event_retrieve_data *data = (struct event_retrieve_data*)event_msg->data;
-                data->events = events;
+                data->root = events[ROOT_EVENT_ID];
                 data->done = 1;
         } else if (event_msg->type == PUBLISH) {
                 struct event_publish_data *data = (struct event_publish_data*)event_msg->data;

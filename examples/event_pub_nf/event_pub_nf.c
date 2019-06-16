@@ -190,15 +190,18 @@ nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
         //wait for the other NF to subscribe
         sleep(5);
 
-        printf("Children of root    = %d, subs = %d\n", data->events[ROOT_EVENT_ID]->children_cnt, data->events[ROOT_EVENT_ID]->subscriber_cnt);
+        printf("Children of root    = %d, subs = %d\n", data->root->children_cnt, data->root->children[ROOT_EVENT_ID]->subscriber_cnt);
+        /*
         printf("Children of pkt tcp = %d, subs = %d\n", data->events[PKT_TCP_EVENT_ID]->children_cnt, data->events[PKT_TCP_EVENT_ID]->subscriber_cnt);
         printf("Children of flow    = %d, subs = %d\n", data->events[FLOW_EVENT_ID]->children_cnt, data->events[FLOW_EVENT_ID]->subscriber_cnt);
+        */
 
-        printf("Is NF 2 subbed to root - %d (should be no)\n", subscribed_to_event(data->events[ROOT_EVENT_ID], 2, 0));
-        printf("Is NF 3 subbed to root - %d (should be yes)\n", subscribed_to_event(data->events[ROOT_EVENT_ID], 3, 0));
-        printf("Is NF 3 subbed to pkt tcp - %d (should be yes)\n", subscribed_to_event(data->events[PKT_TCP_EVENT_ID], 3, 0));
-        printf("Is NF 4 subbed to pkt tcp - %d (should be yes)\n", subscribed_to_event(data->events[PKT_TCP_EVENT_ID], 4, 0));
-        printf("Is NF 4 subbed to pkt tcp fin - %d (should be yes)\n", subscribed_to_event(data->events[PKT_TCP_FIN_EVENT_ID], 4, 0));
+        printf("Is NF 2 subbed to root - %d (should be no)\n", nf_subscribed_to_event(data->root, ROOT_EVENT_ID, 2, 0));
+        printf("Is NF 3 subbed to root - %d (should be yes)\n", nf_subscribed_to_event(data->root, ROOT_EVENT_ID, 3, 4));
+        printf("Is NF 3 subbed to pkt tcp - %d (should be yes)\n", nf_subscribed_to_event(data->root, PKT_TCP_EVENT_ID, 3, 4));
+        printf("Is NF 4 subbed to pkt tcp - %d (should be yes)\n", nf_subscribed_to_event(data->root, PKT_TCP_EVENT_ID, 4, 2));
+        printf("Is NF 4 subbed to pkt tcp fin - %d (should be yes)\n", nf_subscribed_to_event(data->root, PKT_TCP_FIN_EVENT_ID, 4, 2));
+        printf("Is NF 4 subbed to pkt tcp fin - %d (should be no as wrong flow)\n", nf_subscribed_to_event(data->root, PKT_TCP_FIN_EVENT_ID, 4, 40));
 }
 
 int

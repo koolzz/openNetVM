@@ -182,11 +182,13 @@ nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
         while (data->done != 1)
                 sleep(1);
 
-        subscribe_nf(data->events[ROOT_EVENT_ID], 3, 4);
-        subscribe_nf(data->events[PKT_TCP_EVENT_ID], 4, 2);
+        subscribe_nf(get_event(data->root, ROOT_EVENT_ID), 3, 4);
+        subscribe_nf(get_event(data->root, PKT_TCP_EVENT_ID), 4, 2);
 
+        /*
         printf("Children of root    = %d, subs = %d\n", data->events[ROOT_EVENT_ID]->children_cnt, data->events[ROOT_EVENT_ID]->subscriber_cnt);
         printf("Children of pkt tcp = %d, subs = %d\n", data->events[PKT_TCP_EVENT_ID]->children_cnt, data->events[PKT_TCP_EVENT_ID]->subscriber_cnt);
+        */
 }
 
 int

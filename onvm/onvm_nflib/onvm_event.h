@@ -81,8 +81,7 @@ uint64_t EVENT_BITMASK;
 /****************************************************/
 
 struct event_retrieve_data {
-        //int event_id;
-        struct event_tree_node **events;
+        struct event_tree_node *root;
         int done;
 };
 
@@ -105,7 +104,7 @@ struct event_msg {
 
 struct nf_subscriber {
         uint16_t id;
-        int flows[MAX_FLOWS];
+        uint8_t flows[MAX_FLOWS];
 };
 
 struct event_tree_node {
@@ -121,15 +120,19 @@ struct event_tree {
         struct onvm_tree_node *children[MAX_EVENTS]; // sub events
 };
 
+/* Public APIs */
 struct event_tree_node *gen_event_tree_node(uint64_t event_id);
 struct nf_subscriber *gen_nf_subscriber(void);
-void subscribe_nf(struct event_tree_node *event, uint16_t id, uint16_t flow_id);
-void print_targets(struct event_tree_node *event);
-void add_event_node_child(struct event_tree_node *parent, struct event_tree_node *child);
-int subscribed_to_event(struct event_tree_node *event, uint16_t nf_id, uint16_t flow_id);
 int add_event(struct event_tree_node *root, struct event_tree_node *child);
+void subscribe_nf(struct event_tree_node *event, uint16_t id, uint16_t flow_id);
+int nf_subscribed_to_event(struct event_tree_node *root, uint64_t event_id, uint16_t nf_id, uint16_t flow_id);
+struct event_tree_node *get_event(struct event_tree_node *root, uint64_t event_id);
+
+int add_event_node_child(struct event_tree_node *parent, struct event_tree_node *child);
 void publish_new_event(uint64_t event_id);
-void publish_new_event(uint64_t event_id);
+
+/* For testing */
+void print_targets(struct event_tree_node *event);
 
 struct event_tree_node *
 gen_event_tree_node(uint64_t event_id) {
@@ -147,10 +150,20 @@ gen_nf_subscriber(void) {
         return subscriber;
 }
 
-void
+int
 add_event_node_child(struct event_tree_node *parent, struct event_tree_node *child) {
+        int i;
+
+        /* TODO check prefix equality */
+
+        for (i = 0; i < parent->children_cnt; i++) {
+                /* Don't allow duplicate event IDs */
+                if (parent->children[i]->event_id == child->event_id)
+                        return -1;
+        }
         parent->children[parent->children_cnt] = child;
         parent->children_cnt++;
+        return 0;
 }
 
 int
@@ -166,39 +179,75 @@ add_event(struct event_tree_node *root, struct event_tree_node *child) {
 
         for (i = 0; i < MAX_DEPTH; i++) {
                 prefix = (child->event_id >> i*4) & 0xF;
-                // if next prefix is 0, we've reached the end (0 isn't allowed for any prefix)
+                if (prefix == 0) {
+                        printf("Prefixes must be non 0\n");
+                        return -1;
+                }
+                /* if next prefix is 0, we've reached the end of the prefix chain*/
                 if (((child->event_id >> ((i+1)*4)) & 0xF) == 0)
                         break;
-                // prefixes are 1 indexed, arrays are 0 indexed
+                /* Substract 1 because prefixes are 1 indexed, arrays are 0 indexed */
                 cur = cur->children[prefix - 1];
+                if (cur == NULL) {
+                        printf("Can't add event with id %" PRIu64", parent prefix at index %d doesn't exist", child->event_id, i);
+                        return -1;
+                }
         }
-        add_event_node_child(cur, child);
-        return 0;
+        /* TODO subscriber the NFs that are subbed to parent to this event */
+        return add_event_node_child(cur, child);
 }
 
 void
-subscribe_nf(struct event_tree_node *event, uint16_t id, uint16_t flow_id) {
+subscribe_nf(struct event_tree_node *event, uint16_t nf_id, uint16_t flow_id) {
         int i;
-        
-        event->subscribers[event->subscriber_cnt] = gen_nf_subscriber();
-        event->subscribers[event->subscriber_cnt]->id = id;
-        event->subscribers[event->subscriber_cnt]->flows[flow_id] = flow_id;
-        event->subscriber_cnt++;
+        struct nf_subscriber *subscriber;
+
+        subscriber = NULL;
+        for (i = 0; i < event->subscriber_cnt; i++) {
+                if (event->subscribers[i]->id == nf_id)
+                        subscriber = event->subscribers[i];
+        }
+
+        if (subscriber == NULL) {
+                subscriber = gen_nf_subscriber();
+                subscriber->id = nf_id;
+                event->subscribers[event->subscriber_cnt] = subscriber;
+                event->subscriber_cnt++;
+        }
+        subscriber->flows[flow_id] = 1;
 
         for (i = 0; i < event->children_cnt; i++) {
-                subscribe_nf(event->children[i], id, flow_id);
+                subscribe_nf(event->children[i], nf_id, flow_id);
         }
 }
 
+struct event_tree_node *
+get_event(struct event_tree_node *root, uint64_t event_id) {
+        int i;
+        struct event_tree_node *result;
+
+        if (event_id == root->event_id)
+                return root;
+
+        /* Should do prefix search but the number of events is so small the performance diff is negligible */
+        for (i = 0; i < root->children_cnt; i++) {
+                result = get_event(root->children[i], event_id);
+                if (result != NULL)
+                        return result;
+        }
+        return NULL;
+}
+
 int
-subscribed_to_event(struct event_tree_node *event, uint16_t nf_id, uint16_t flow_id) {
+nf_subscribed_to_event(struct event_tree_node *root, uint64_t event_id, uint16_t nf_id, uint16_t flow_id) {
         int i;
         int subscribed = 0;
+        struct event_tree_node *event;
+
+        event = get_event(root, event_id);
 
         for (i = 0; i < event->subscriber_cnt; i++) {
-                if (event->subscribers[i]->id == nf_id) {
-                        // TODO flow id stuff
-                        flow_id++;
+                if (event->subscribers[i]->id == nf_id && event->subscribers[i]->flows[flow_id] == 1) {
                         subscribed = 1;
                         break;
                 }
