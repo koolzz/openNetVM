@@ -64,9 +64,17 @@ static uint32_t print_delay = 1000000;
 
 static uint32_t destination;
 
-struct event_tree_node **events;
+struct subscription {
+        uint64_t event_id;
+        void (*event_cb)(void);
+};
+struct subscription *subscriptions[16];
 
 void nf_setup(struct onvm_nf_local_ctx *nf_local_ctx);
+void msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx);
+void print_hello(void);
+void print_comrad(void);
+
 
 /*
  * Print a usage message
@@ -181,14 +189,37 @@ nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
 
         while (data->done != 1)
                 sleep(1);
-
+        int i;
+        for (i = 0; i < 16; i++) {
+                subscriptions[i] = NULL;
+        }
         subscribe_nf(get_event(data->root, ROOT_EVENT_ID), 3, 4);
+        subscriptions[0] = rte_zmalloc("Testy mctestface", sizeof(struct subscription), 0);
         subscribe_nf(get_event(data->root, PKT_TCP_EVENT_ID), 4, 2);
+        subscriptions[1] = rte_zmalloc("Testy mctestface", sizeof(struct subscription), 0);
+        subscriptions[1]->event_cb = &print_comrad;
+        subscriptions[1]->event_id = PKT_TCP_EVENT_ID;
+}
 
-        /*
-        printf("Children of root    = %d, subs = %d\n", data->events[ROOT_EVENT_ID]->children_cnt, data->events[ROOT_EVENT_ID]->subscriber_cnt);
-        printf("Children of pkt tcp = %d, subs = %d\n", data->events[PKT_TCP_EVENT_ID]->children_cnt, data->events[PKT_TCP_EVENT_ID]->subscriber_cnt);
-        */
+void print_hello(void) {
+        printf("Hola\n");
+}
+void print_comrad(void) {
+        printf("Здраствуй комрад Дятлов\n");
+}
+void
+msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
+        int i;
+        struct onvm_event_msg *msg = (struct onvm_event_msg *) msg_data;
+        for (i = 0; i < 16; i++) {
+                if (subscriptions[i] != NULL && subscriptions[i]->event_id ==  msg->event_id) {
+                        printf("NF %d recieved msg, calling callback\n", nf_local_ctx->nf->instance_id);
+                        (*subscriptions[i]->event_cb)();
+                        return;
+                }
+        }
+        /*we should actually forward but wifi in this airport is not great */
+        printf("NF %d recieved msg, but isn't subscribed to it, forwarding\n", nf_local_ctx->nf->instance_id);
 }
 
 int
@@ -208,6 +239,7 @@ main(int argc, char *argv[]) {
         nf_function_table = onvm_nflib_init_nf_function_table();
         nf_function_table->pkt_handler = &packet_handler;
         nf_function_table->setup = &nf_setup;
+        nf_function_table->msg_handler = &msg_handler;
 
         if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
                 onvm_nflib_stop(nf_local_ctx);

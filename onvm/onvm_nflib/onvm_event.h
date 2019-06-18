@@ -120,6 +120,12 @@ struct event_tree {
         struct onvm_tree_node *children[MAX_EVENTS]; // sub events
 };
 
+/* Sent to NF instead of pkts (Grace had the actual struct this is just a quick definition for testing purpouses */
+struct onvm_event_msg {
+        uint64_t event_id;
+        struct rte_mbuf *pkt;
+};
+
 /* Public APIs */
 struct event_tree_node *gen_event_tree_node(uint64_t event_id);
 struct nf_subscriber *gen_nf_subscriber(void);
@@ -128,6 +134,7 @@ void subscribe_nf(struct event_tree_node *event, uint16_t id, uint16_t flow_id);
 int nf_subscribed_to_event(struct event_tree_node *root, uint64_t event_id, uint16_t nf_id, uint16_t flow_id);
 struct event_tree_node *get_event(struct event_tree_node *root, uint64_t event_id);
 
+void test_sending_event(uint64_t event_id, uint16_t dest_id);
 int add_event_node_child(struct event_tree_node *parent, struct event_tree_node *child);
 void publish_new_event(uint64_t event_id);
 
@@ -276,4 +283,10 @@ publish_new_event(uint64_t event_id) {
         onvm_nflib_send_msg_to_nf(1, (void*)msg);
 }
 
+void
+test_sending_event(uint64_t event_id, uint16_t dest_id) {
+        struct onvm_event_msg *msg = rte_zmalloc("ev msg", sizeof(struct onvm_event_msg), 0);
+        msg->event_id = event_id;
+        onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
+}
 #endif  // _ONVM_EVENT_H_
