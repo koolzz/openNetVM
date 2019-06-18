@@ -159,7 +159,7 @@ gen_nf_subscriber(void) {
 
 int
 add_event_node_child(struct event_tree_node *parent, struct event_tree_node *child) {
-        int i;
+        int i, j;
 
         /* TODO check prefix equality */
 
@@ -170,6 +170,13 @@ add_event_node_child(struct event_tree_node *parent, struct event_tree_node *chi
         }
         parent->children[parent->children_cnt] = child;
         parent->children_cnt++;
+        /* Copy all parent subscriptions to child */
+        for (i = 0; i < parent->subscriber_cnt; i++) {
+                for (j = 0; j < MAX_FLOWS; j++) {
+                        if(parent->subscribers[i]->flows[j])
+                                subscribe_nf(parent->children[i], parent->subscribers[i]->id, j);
+                }
+        }
         return 0;
 }
 
@@ -200,7 +207,6 @@ add_event(struct event_tree_node *root, struct event_tree_node *child) {
                         return -1;
                 }
         }
-        /* TODO subscriber the NFs that are subbed to parent to this event */
         return add_event_node_child(cur, child);
 }
 
