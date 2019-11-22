@@ -58,10 +58,20 @@
 #include "onvm_flow_table.h"
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
-
+#include "onvm_event.h"
 #define NF_TAG "flow_tracker"
 #define TBL_SIZE 100
 #define EXPIRE_TIME 5
+
+/*****************EVENT TYPES************************/
+struct event_tree_node *ROOT_EVENT_NODE;
+struct event_tree_node *PKT_EVENT_NODE;
+struct event_tree_node *FLOW_EVENT_NODE;
+struct event_tree_node *FLOW_NEW_EVENT_NODE;
+struct event_tree_node *FLOW_END_EVENT_NODE;
+struct event_tree_node *FLOW_LARGE_EVENT_NODE;
+/*****************end EVENT TYPES************************/
+struct event_tree_node **events;
 
 /*Struct that holds all NF state information */
 struct state_info {
@@ -81,7 +91,10 @@ struct flow_stats {
 };
 
 struct state_info *state_info;
+//static struct event_retrieve_data *event_data = NULL;
 
+//static void pkt_display(struct rte_mbuf *pkt);
+void nf_setup(struct onvm_nf_local_ctx *nf_local_ctx);
 /*
  * Prints application arguments
  */
@@ -145,6 +158,11 @@ update_status(uint64_t elapsed_cycles, struct flow_stats *data) {
         }
         if ((elapsed_cycles - data->last_pkt_cycles) / rte_get_timer_hz() >= EXPIRE_TIME) {
                 data->is_active = 0;
+		//end events
+		printf("++++++++++++++++Send end event msg\n");
+		test_sending_event(FLOW_END_EVENT_ID,2);
+		//publish_event(events,ROOT_EVENT_NODE,FLOW_END_EVENT_ID);
+		
         } else {
                 data->is_active = 1;
         }
@@ -214,23 +232,54 @@ do_stats_display(struct state_info *state_info) {
         }
 }
 
+#if 0
+static void 
+pkt_display(struct rte_mbuf *pkt){
+	const char clr[] = {27, '[', '2', 'J', '\0'};
+        const char topLeft[] = {27, '[', '1', ';', '1', 'H', '\0'};
+        //static uint64_t pkt_process = 0;
+        struct ipv4_hdr *ip;
+
+        //pkt_process += print_delay;
+
+        /* Clear screen and move to top left */
+        printf("%s%s", clr, topLeft);
+
+        printf("PACKETS\n");
+        printf("-----\n");
+        printf("Port : %d\n", pkt->port);
+        printf("Size : %d\n", pkt->pkt_len);
+        //printf("N°   : %" PRIu64 "\n", pkt_process);
+        printf("\n\n");
+
+        ip = onvm_pkt_ipv4_hdr(pkt);
+        if (ip != NULL) {
+                onvm_pkt_print(pkt);
+        } else {
+                printf("No IP4 header found\n");
+        }
+}
+#endif 
+
 /*
  * Adds an entry to the flow table. It first checks if the table is full, and
  * if so, it calls clear_entries() to free up space.
  */
 static int
-table_add_entry(struct onvm_ft_ipv4_5tuple *key, struct state_info *state_info) {
+table_add_entry(struct onvm_ft_ipv4_5tuple *key, struct state_info *state_info, struct rte_mbuf *pkt) {
         struct flow_stats *data = NULL;
 
         if (unlikely(key == NULL || state_info == NULL)) {
                 return -1;
         }
-
+	printf("flow_tracker table_add_entry TBL_SIZE:%d,state_info->num_stored:%d\n",TBL_SIZE,state_info->num_stored);
         if (TBL_SIZE - state_info->num_stored == 0) {
                 int ret = clear_entries(state_info);
                 if (ret < 0) {
                         return -1;
                 }
+		//publish_event(events,ROOT_EVENT_NODE,FLOW_END_EVENT_ID);
+		//test_sending_event(FLOW_END_EVENT_ID, 2);
         }
 
         int tbl_index = onvm_ft_add_key(state_info->ft, key, (char **)&data);
@@ -238,10 +287,15 @@ table_add_entry(struct onvm_ft_ipv4_5tuple *key, struct state_info *state_info) 
                 return -1;
         }
 
-        data->pkt_count = 0;
+        data->pkt_count = pkt->pkt_len;//For removing the error that pkt is not used
+	data->pkt_count = 0;
         data->last_pkt_cycles = state_info->elapsed_cycles;
         data->is_active = 1;
         state_info->num_stored += 1;
+	//publish_event(FLOW_NEW_EVENT_ID, pkt);
+	//publish_event(events,ROOT_EVENT_NODE, FLOW_NEW_EVENT_ID);
+	printf("+++++++++++++Send FLOW_NEW_EVENT_IDpkt+++++++++++++\n");
+	test_sending_event(FLOW_NEW_EVENT_ID, 2);
         return 0;
 }
 
@@ -265,13 +319,18 @@ table_lookup_entry(struct rte_mbuf *pkt, struct state_info *state_info) {
 
         int tbl_index = onvm_ft_lookup_key(state_info->ft, &key, (char **)&data);
         if (tbl_index == -ENOENT) {
-                return table_add_entry(&key, state_info);
+		//update
+		//publish_new_event(FLOW_NEW_EVENT_ID, pkt);
+                return table_add_entry(&key, state_info,pkt);
         } else if (tbl_index < 0) {
                 printf("Some other error occurred with the packet hashing\n");
                 return -1;
         } else {
                 data->pkt_count += 1;
                 data->last_pkt_cycles = state_info->elapsed_cycles;
+		if(data->pkt_count >= 5)
+			test_sending_event(FLOW_LARGE_EVENT_ID,2);
+			//publish_event(events, ROOT_EVENT_NODE, FLOW_LARGE_EVENT_ID);
                 return 0;
         }
 }
@@ -291,20 +350,56 @@ callback_handler(__attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx)
 static int
 packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
                __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
+
         if (!onvm_pkt_is_ipv4(pkt)) {
                 meta->destination = state_info->destination;
                 meta->action = ONVM_NF_ACTION_TONF;
                 return 0;
         }
 
+	printf("\n\n********************pkt*******************\n");	
+	onvm_pkt_print(pkt);
+	printf("********************end pkt*******************\n"); 
+
         if (table_lookup_entry(pkt, state_info) < 0) {
                 printf("Packet could not be identified or processed\n");
         }
-
         meta->destination = state_info->destination;
+	printf("meta->destination:%d\n",meta->destination);
         meta->action = ONVM_NF_ACTION_TONF;
 
         return 0;
+}
+
+void
+nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
+        printf("Hi boi %d\n", nf_local_ctx->nf->instance_id);
+
+	events = (struct event_tree_node **) rte_calloc("root event", MAX_EVENTS, sizeof(struct event_tree_node *), 0);
+
+	ROOT_EVENT_NODE = gen_event_tree_node(ROOT_EVENT_ID);
+
+	PKT_EVENT_NODE = gen_event_tree_node(ROOT_EVENT_ID);
+	FLOW_EVENT_NODE = gen_event_tree_node(FLOW_EVENT_ID);
+	add_event_node_child(ROOT_EVENT_NODE, PKT_EVENT_NODE);
+        add_event_node_child(ROOT_EVENT_NODE, FLOW_EVENT_NODE);
+
+	events[ROOT_EVENT_ID] = ROOT_EVENT_NODE;
+	events[FLOW_EVENT_ID] = FLOW_EVENT_NODE;	
+
+	nf_local_ctx->nf->data = (void *)ROOT_EVENT_NODE;
+
+	//printf("FLOW_NEW_EVENT_ID:%u\n",FLOW_NEW_EVENT_ID);
+	printf("\nwill publish events\n");
+	publish_event(events,ROOT_EVENT_NODE,FLOW_NEW_EVENT_ID);
+	printf("\nwill publish events2\n");
+	publish_event(events,ROOT_EVENT_NODE,FLOW_NEW_EVENT_ID);
+	//printf("FLOW_END_EVENT_ID:%u\n",FLOW_END_EVENT_ID);
+	printf("\nwill publish events3\n");
+	publish_event(events,ROOT_EVENT_NODE,FLOW_END_EVENT_ID);
+	//printf("FLOW_LARGE_EVENT_ID:%u\n",FLOW_LARGE_EVENT_ID);
+	printf("\nwill publish events4\n");
+	publish_event(events, ROOT_EVENT_NODE, FLOW_LARGE_EVENT_ID);
 }
 
 int
@@ -320,6 +415,7 @@ main(int argc, char *argv[]) {
         nf_function_table = onvm_nflib_init_nf_function_table();
         nf_function_table->pkt_handler = &packet_handler;
         nf_function_table->user_actions = &callback_handler;
+	nf_function_table->setup = &nf_setup;
 
         if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
                 onvm_nflib_stop(nf_local_ctx);
@@ -330,7 +426,6 @@ main(int argc, char *argv[]) {
                         rte_exit(EXIT_FAILURE, "Failed ONVM init\n");
                 }
         }
-
         argc -= arg_offset;
         argv += arg_offset;
 
