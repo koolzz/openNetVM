@@ -55,7 +55,7 @@
 
 /******************************DPDK libraries*********************************/
 #include "rte_malloc.h"
-
+#include "rte_cycles.h"
 /*****************************Internal headers********************************/
 
 #include "onvm_includes.h"
@@ -554,14 +554,14 @@ onvm_nflib_thread_main_loop(void *arg) {
                 nf->function_table->setup(nf_local_ctx);
 
         start_time = rte_get_tsc_cycles();
+	//printf("nf_local_ctx->keep_running:%d,main_nf_local_ctx->keep_running:%d\n",rte_atomic16_read(nf_local_ctx->keep_running),rte_atomic16_read(main_nf_local_ctx->keep_running));
         for (;rte_atomic16_read(&nf_local_ctx->keep_running) && rte_atomic16_read(&main_nf_local_ctx->keep_running);) {
+		//printf("nflib111111111\n");
                 nb_pkts_added =
                         onvm_nflib_dequeue_packets((void **)pkts, nf_local_ctx, nf->function_table->pkt_handler);
-
                 if (likely(nb_pkts_added > 0)) {
                         onvm_pkt_process_tx_batch(nf->nf_tx_mgr, pkts, nb_pkts_added, nf);
                 }
-
                 /* Flush the packet buffers */
                 onvm_pkt_enqueue_tx_thread(nf->nf_tx_mgr->to_tx_buf, nf);
                 onvm_pkt_flush_all_nfs(nf->nf_tx_mgr, nf);
@@ -622,6 +622,7 @@ onvm_nflib_nf_ready(struct onvm_nf *nf) {
 
         startup_msg->msg_type = MSG_NF_READY;
         startup_msg->msg_data = nf;
+	
         ret = rte_ring_enqueue(mgr_msg_queue, startup_msg);
         if (ret < 0) {
                 rte_mempool_put(nf_msg_pool, startup_msg);

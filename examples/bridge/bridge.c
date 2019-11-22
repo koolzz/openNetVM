@@ -1,4 +1,4 @@
-/*********************************************************************
+/********************************************************************
  *                     openNetVM
  *              https://sdnfv.github.io
  *
@@ -147,6 +147,7 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
                 counter = 0;
         }
 
+	printf("pkt->port:%d\n",pkt->port);
         if (pkt->port == 0) {
                 meta->destination = 1;
         } else {

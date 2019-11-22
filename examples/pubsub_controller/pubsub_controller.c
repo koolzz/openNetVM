@@ -208,7 +208,10 @@ nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
                 add_event(ROOT_EVENT, data->event);
                 events[data->event->event_id] = data->event;
                 data->done = 1;
-        } else {
+        } else if (event_msg->type == SENT){
+		
+	} 
+	else {
                 printf("Recieved unknown event msg type - %d\n", event_msg->type);
         }
 }

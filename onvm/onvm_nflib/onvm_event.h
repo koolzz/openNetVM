@@ -70,6 +70,9 @@ uint64_t EVENT_BITMASK;
 #define FLOW_EVENT_ID 0x2
 #define FLOW_TCP_EVENT_ID (FLOW_EVENT_ID + (0x1<<4))
 #define FLOW_TCP_TERM_EVENT_ID (FLOW_TCP_EVENT_ID + (0x1<<8))
+#define FLOW_NEW_EVENT_ID (FLOW_EVENT_ID + (0x2<<4))
+#define FLOW_END_EVENT_ID (FLOW_EVENT_ID + (0x3<<4))
+#define FLOW_LARGE_EVENT_ID (FLOW_EVENT_ID + (0x4<<4))
 
 #define STATS_EVENT_ID 0x3
 
@@ -137,6 +140,9 @@ struct event_tree_node *get_event(struct event_tree_node *root, uint64_t event_i
 void test_sending_event(uint64_t event_id, uint16_t dest_id);
 int add_event_node_child(struct event_tree_node *parent, struct event_tree_node *child);
 void publish_new_event(uint64_t event_id);
+void publish_event(struct event_tree_node** events, struct event_tree_node *root, uint64_t event_id);
+void publish_event1(uint64_t event_id, struct rte_mbuf *pkt);
+void publish_event2(uint64_t event_id, void *pkt);
 
 /* For testing */
 void print_targets(struct event_tree_node *event);
@@ -170,6 +176,7 @@ add_event_node_child(struct event_tree_node *parent, struct event_tree_node *chi
         }
         parent->children[parent->children_cnt] = child;
         parent->children_cnt++;
+	printf("add_event_node_child parent->event_id:%lu,children_cnt:%u\n",parent->event_id,parent->children_cnt-1);
         /* Copy all parent subscriptions to child */
         for (i = 0; i < parent->subscriber_cnt; i++) {
                 for (j = 0; j < MAX_FLOWS; j++) {
@@ -190,9 +197,11 @@ add_event(struct event_tree_node *root, struct event_tree_node *child) {
         }
 
         cur = root;
+	printf("child->event_id:%lu\n",child->event_id);
 
         for (i = 0; i < MAX_DEPTH; i++) {
                 prefix = (child->event_id >> i*4) & 0xF;
+		printf("prefix:%u\n",prefix);
                 if (prefix == 0) {
                         printf("Prefixes must be non 0\n");
                         return -1;
@@ -287,6 +296,41 @@ publish_new_event(uint64_t event_id) {
         data->event = gen_event_tree_node(event_id);
         msg->data = (void *)data;
         onvm_nflib_send_msg_to_nf(1, (void*)msg);
+}
+
+void
+publish_event(struct event_tree_node** events, struct event_tree_node *root, uint64_t event_id){
+        
+        struct event_publish_data *data = rte_zmalloc("ev pub data", sizeof(struct event_publish_data), 0);
+        
+        data->event = gen_event_tree_node(event_id);
+        add_event(root, data->event);
+        events[data->event->event_id] = data->event;
+}
+
+void 
+publish_event1(uint64_t event_id, struct rte_mbuf *pkt){
+
+	struct event_publish_data *data = (struct event_publish_data*)pkt;
+	//struct event_publish_data *data = rte_zmalloc("ev pub data", sizeof(struct event_publish_data), 0);
+	
+	data->event = gen_event_tree_node(event_id);
+	//add_event(ROOT_EVENT, data->event);
+	//events[data->event->event_id] = data->event;
+}
+
+void
+publish_event2(uint64_t event_id, void *pkt){
+
+	struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
+	msg->type = PUBLISH;
+	//struct event_publish_data *data = rte_pktmbuf_mtod(pkt, struct event_publish_data *);
+	
+	struct event_publish_data *data = (struct event_publish_data*)pkt;
+
+	data->event = gen_event_tree_node(event_id);
+	msg->data = (void *)data;
+	onvm_nflib_send_msg_to_nf(1, (void*)msg);
 }
 
 void

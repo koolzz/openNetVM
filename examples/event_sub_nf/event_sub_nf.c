@@ -212,8 +212,9 @@ msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
         int i;
         struct onvm_event_msg *msg = (struct onvm_event_msg *) msg_data;
         for (i = 0; i < 16; i++) {
+		printf("subscriptions[%d]->event_id:%lu\n",i,subscriptions[i]->event_id);
                 if (subscriptions[i] != NULL && subscriptions[i]->event_id ==  msg->event_id) {
-                        printf("NF %d recieved msg, calling callback\n", nf_local_ctx->nf->instance_id);
+                        printf("NF %d recieved msg, calling callback,msg->event_id:%lu\n", nf_local_ctx->nf->instance_id,msg->event_id);
                         (*subscriptions[i]->event_cb)();
                         return;
                 }
