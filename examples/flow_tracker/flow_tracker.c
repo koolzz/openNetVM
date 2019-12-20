@@ -62,17 +62,7 @@
 #define NF_TAG "flow_tracker"
 #define TBL_SIZE 100
 #define EXPIRE_TIME 5
-
-/*****************EVENT TYPES************************/
-struct event_tree_node *ROOT_EVENT_NODE;
-struct event_tree_node *PKT_EVENT_NODE;
-struct event_tree_node *FLOW_EVENT_NODE;
-struct event_tree_node *FLOW_NEW_EVENT_NODE;
-struct event_tree_node *FLOW_END_EVENT_NODE;
-struct event_tree_node *FLOW_LARGE_EVENT_NODE;
-/*****************end EVENT TYPES************************/
-struct event_tree_node **events;
-
+#define PUBSUB_CONTROLLER_ID 2
 /*Struct that holds all NF state information */
 struct state_info {
         struct onvm_ft *ft;
@@ -91,9 +81,7 @@ struct flow_stats {
 };
 
 struct state_info *state_info;
-//static struct event_retrieve_data *event_data = NULL;
 
-//static void pkt_display(struct rte_mbuf *pkt);
 void nf_setup(struct onvm_nf_local_ctx *nf_local_ctx);
 /*
  * Prints application arguments
@@ -158,10 +146,6 @@ update_status(uint64_t elapsed_cycles, struct flow_stats *data) {
         }
         if ((elapsed_cycles - data->last_pkt_cycles) / rte_get_timer_hz() >= EXPIRE_TIME) {
                 data->is_active = 0;
-		//end events
-		printf("++++++++++++++++Send end event msg\n");
-		test_sending_event(FLOW_END_EVENT_ID,2);
-		//publish_event(events,ROOT_EVENT_NODE,FLOW_END_EVENT_ID);
 		
         } else {
                 data->is_active = 1;
@@ -189,7 +173,6 @@ clear_entries(struct state_info *state_info) {
                 if (update_status(state_info->elapsed_cycles, data) < 0) {
                         return -1;
                 }
-
                 if (!data->is_active) {
                         ret = onvm_ft_remove_key(state_info->ft, key);
                         state_info->num_stored--;
@@ -197,6 +180,8 @@ clear_entries(struct state_info *state_info) {
                                 printf("Key should have been removed, but was not\n");
                                 state_info->num_stored++;
                         }
+			printf("++++++++++++++++Send END MSG++++++++++++\n");
+			send_event_data(FLOW_END_EVENT_ID, PUBSUB_CONTROLLER_ID, (void*)key);
                 }
         }
 
@@ -232,35 +217,6 @@ do_stats_display(struct state_info *state_info) {
         }
 }
 
-#if 0
-static void 
-pkt_display(struct rte_mbuf *pkt){
-	const char clr[] = {27, '[', '2', 'J', '\0'};
-        const char topLeft[] = {27, '[', '1', ';', '1', 'H', '\0'};
-        //static uint64_t pkt_process = 0;
-        struct ipv4_hdr *ip;
-
-        //pkt_process += print_delay;
-
-        /* Clear screen and move to top left */
-        printf("%s%s", clr, topLeft);
-
-        printf("PACKETS\n");
-        printf("-----\n");
-        printf("Port : %d\n", pkt->port);
-        printf("Size : %d\n", pkt->pkt_len);
-        //printf("N°   : %" PRIu64 "\n", pkt_process);
-        printf("\n\n");
-
-        ip = onvm_pkt_ipv4_hdr(pkt);
-        if (ip != NULL) {
-                onvm_pkt_print(pkt);
-        } else {
-                printf("No IP4 header found\n");
-        }
-}
-#endif 
-
 /*
  * Adds an entry to the flow table. It first checks if the table is full, and
  * if so, it calls clear_entries() to free up space.
@@ -278,8 +234,6 @@ table_add_entry(struct onvm_ft_ipv4_5tuple *key, struct state_info *state_info, 
                 if (ret < 0) {
                         return -1;
                 }
-		//publish_event(events,ROOT_EVENT_NODE,FLOW_END_EVENT_ID);
-		//test_sending_event(FLOW_END_EVENT_ID, 2);
         }
 
         int tbl_index = onvm_ft_add_key(state_info->ft, key, (char **)&data);
@@ -292,10 +246,9 @@ table_add_entry(struct onvm_ft_ipv4_5tuple *key, struct state_info *state_info, 
         data->last_pkt_cycles = state_info->elapsed_cycles;
         data->is_active = 1;
         state_info->num_stored += 1;
-	//publish_event(FLOW_NEW_EVENT_ID, pkt);
-	//publish_event(events,ROOT_EVENT_NODE, FLOW_NEW_EVENT_ID);
-	printf("+++++++++++++Send FLOW_NEW_EVENT_IDpkt+++++++++++++\n");
-	test_sending_event(FLOW_NEW_EVENT_ID, 2);
+	printf("+++++++++++++Send NEW MSG+++++++++++++\n");
+	send_event_data(FLOW_NEW_EVENT_ID, PUBSUB_CONTROLLER_ID, (void*)pkt);
+
         return 0;
 }
 
@@ -329,8 +282,10 @@ table_lookup_entry(struct rte_mbuf *pkt, struct state_info *state_info) {
                 data->pkt_count += 1;
                 data->last_pkt_cycles = state_info->elapsed_cycles;
 		if(data->pkt_count >= 5)
-			test_sending_event(FLOW_LARGE_EVENT_ID,2);
-			//publish_event(events, ROOT_EVENT_NODE, FLOW_LARGE_EVENT_ID);
+		{
+			printf("++++++++++++Send LARGE MSG++++++++++\n");
+			send_event_data(FLOW_LARGE_EVENT_ID, PUBSUB_CONTROLLER_ID, (void*)pkt);
+		}
                 return 0;
         }
 }
@@ -357,15 +312,10 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
                 return 0;
         }
 
-	printf("\n\n********************pkt*******************\n");	
-	onvm_pkt_print(pkt);
-	printf("********************end pkt*******************\n"); 
-
         if (table_lookup_entry(pkt, state_info) < 0) {
                 printf("Packet could not be identified or processed\n");
         }
         meta->destination = state_info->destination;
-	printf("meta->destination:%d\n",meta->destination);
         meta->action = ONVM_NF_ACTION_TONF;
 
         return 0;
@@ -375,31 +325,18 @@ void
 nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
         printf("Hi boi %d\n", nf_local_ctx->nf->instance_id);
 
-	events = (struct event_tree_node **) rte_calloc("root event", MAX_EVENTS, sizeof(struct event_tree_node *), 0);
+	struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
+        msg->type = RETRIEVE;
+        struct event_retrieve_data *data = rte_zmalloc("ev ret data", sizeof(struct event_retrieve_data), 0);
+        msg->data = (void *)data;
+        onvm_nflib_send_msg_to_nf(PUBSUB_CONTROLLER_ID, (void*)msg);
 
-	ROOT_EVENT_NODE = gen_event_tree_node(ROOT_EVENT_ID);
+        while (data->done != 1)
+                sleep(1);
 
-	PKT_EVENT_NODE = gen_event_tree_node(ROOT_EVENT_ID);
-	FLOW_EVENT_NODE = gen_event_tree_node(FLOW_EVENT_ID);
-	add_event_node_child(ROOT_EVENT_NODE, PKT_EVENT_NODE);
-        add_event_node_child(ROOT_EVENT_NODE, FLOW_EVENT_NODE);
-
-	events[ROOT_EVENT_ID] = ROOT_EVENT_NODE;
-	events[FLOW_EVENT_ID] = FLOW_EVENT_NODE;	
-
-	nf_local_ctx->nf->data = (void *)ROOT_EVENT_NODE;
-
-	//printf("FLOW_NEW_EVENT_ID:%u\n",FLOW_NEW_EVENT_ID);
-	printf("\nwill publish events\n");
-	publish_event(events,ROOT_EVENT_NODE,FLOW_NEW_EVENT_ID);
-	printf("\nwill publish events2\n");
-	publish_event(events,ROOT_EVENT_NODE,FLOW_NEW_EVENT_ID);
-	//printf("FLOW_END_EVENT_ID:%u\n",FLOW_END_EVENT_ID);
-	printf("\nwill publish events3\n");
-	publish_event(events,ROOT_EVENT_NODE,FLOW_END_EVENT_ID);
-	//printf("FLOW_LARGE_EVENT_ID:%u\n",FLOW_LARGE_EVENT_ID);
-	printf("\nwill publish events4\n");
-	publish_event(events, ROOT_EVENT_NODE, FLOW_LARGE_EVENT_ID);
+	publish_event(PUBSUB_CONTROLLER_ID,FLOW_NEW_EVENT_ID);
+	publish_event(PUBSUB_CONTROLLER_ID,FLOW_END_EVENT_ID);
+	publish_event(PUBSUB_CONTROLLER_ID,FLOW_LARGE_EVENT_ID);
 }
 
 int

@@ -54,6 +54,7 @@
 #define RETRIEVE 1
 #define SUBSCRIBE 2
 #define PUBLISH 3
+#define SENT 4
 
 uint64_t EVENT_BITMASK;
 
@@ -101,7 +102,7 @@ struct event_publish_data {
 };
 
 struct event_msg {
-        int type; //retrieve or subscribe
+        int type; 
         void *data;
 };
 
@@ -126,7 +127,7 @@ struct event_tree {
 /* Sent to NF instead of pkts (Grace had the actual struct this is just a quick definition for testing purpouses */
 struct onvm_event_msg {
         uint64_t event_id;
-        struct rte_mbuf *pkt;
+        void *pkt;
 };
 
 /* Public APIs */
@@ -138,11 +139,11 @@ int nf_subscribed_to_event(struct event_tree_node *root, uint64_t event_id, uint
 struct event_tree_node *get_event(struct event_tree_node *root, uint64_t event_id);
 
 void test_sending_event(uint64_t event_id, uint16_t dest_id);
+void send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt);
 int add_event_node_child(struct event_tree_node *parent, struct event_tree_node *child);
 void publish_new_event(uint64_t event_id);
-void publish_event(struct event_tree_node** events, struct event_tree_node *root, uint64_t event_id);
-void publish_event1(uint64_t event_id, struct rte_mbuf *pkt);
-void publish_event2(uint64_t event_id, void *pkt);
+void publish_event(uint16_t dest_controller,uint64_t event_id);
+void publish_event1(struct event_tree_node** events, struct event_tree_node *root, uint64_t event_id);
 
 /* For testing */
 void print_targets(struct event_tree_node *event);
@@ -197,11 +198,9 @@ add_event(struct event_tree_node *root, struct event_tree_node *child) {
         }
 
         cur = root;
-	printf("child->event_id:%lu\n",child->event_id);
 
         for (i = 0; i < MAX_DEPTH; i++) {
                 prefix = (child->event_id >> i*4) & 0xF;
-		printf("prefix:%u\n",prefix);
                 if (prefix == 0) {
                         printf("Prefixes must be non 0\n");
                         return -1;
@@ -299,7 +298,17 @@ publish_new_event(uint64_t event_id) {
 }
 
 void
-publish_event(struct event_tree_node** events, struct event_tree_node *root, uint64_t event_id){
+publish_event(uint16_t dest_controller,uint64_t event_id) {
+        struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
+        msg->type = PUBLISH;
+        struct event_publish_data *data = rte_zmalloc("ev pub data", sizeof(struct event_publish_data), 0);
+        data->event = gen_event_tree_node(event_id);
+        msg->data = (void *)data;
+        onvm_nflib_send_msg_to_nf(dest_controller, (void*)msg);
+}
+
+void
+publish_event1(struct event_tree_node** events, struct event_tree_node *root, uint64_t event_id){
         
         struct event_publish_data *data = rte_zmalloc("ev pub data", sizeof(struct event_publish_data), 0);
         
@@ -308,35 +317,25 @@ publish_event(struct event_tree_node** events, struct event_tree_node *root, uin
         events[data->event->event_id] = data->event;
 }
 
-void 
-publish_event1(uint64_t event_id, struct rte_mbuf *pkt){
-
-	struct event_publish_data *data = (struct event_publish_data*)pkt;
-	//struct event_publish_data *data = rte_zmalloc("ev pub data", sizeof(struct event_publish_data), 0);
-	
-	data->event = gen_event_tree_node(event_id);
-	//add_event(ROOT_EVENT, data->event);
-	//events[data->event->event_id] = data->event;
-}
-
-void
-publish_event2(uint64_t event_id, void *pkt){
-
-	struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
-	msg->type = PUBLISH;
-	//struct event_publish_data *data = rte_pktmbuf_mtod(pkt, struct event_publish_data *);
-	
-	struct event_publish_data *data = (struct event_publish_data*)pkt;
-
-	data->event = gen_event_tree_node(event_id);
-	msg->data = (void *)data;
-	onvm_nflib_send_msg_to_nf(1, (void*)msg);
-}
-
 void
 test_sending_event(uint64_t event_id, uint16_t dest_id) {
         struct onvm_event_msg *msg = rte_zmalloc("ev msg", sizeof(struct onvm_event_msg), 0);
         msg->event_id = event_id;
         onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
 }
+
+void send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt){
+	struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
+        msg->type = SENT;
+
+        struct onvm_event_msg *msg_event = rte_zmalloc("ev msg", sizeof(struct onvm_event_msg), 0);
+        msg_event->event_id = event_id;
+        msg_event->pkt = pkt;
+
+        msg->data = (void *)msg_event;
+
+        onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
+}
+
+
 #endif  // _ONVM_EVENT_H_

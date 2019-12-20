@@ -52,45 +52,51 @@
 #include <rte_common.h>
 #include <rte_ip.h>
 #include <rte_mbuf.h>
+#include <rte_malloc.h>
 
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
 #include "onvm_event.h"
 
-#define NF_TAG "simple_forward"
-
-/*****************EVENT TYPES************************/
-struct event_tree_node *ROOT_EVENT;
-
-struct event_tree_node *PKT_EVENT;
-struct event_tree_node *PKT_TCP_EVENT;
-struct event_tree_node *PKT_TCP_SYN_EVENT;
-struct event_tree_node *PKT_TCP_FIN_EVENT;
-struct event_tree_node *PKT_TCP_DPI_EVENT;
-
-struct event_tree_node *FLOW_EVENT;
-struct event_tree_ndoe *FLOW_TCP_EVENT;
-struct event_tree_node *FLOW_TCP_TERM_EVENT;
-
-struct event_tree_node *STATS_EVENT;
-
-struct event_tree_node *FLOW_REQ_EVENT;
-
-struct event_tree_node *FLOW_DEST_EVENT;
-
-struct event_tree_node *DATA_RDY_EVENT;
-/****************************************************/
-struct event_tree_node **events;
+#define NF_TAG "flow_tracker_subscriber"
+#define TBL_SIZE 100
+#define EXPIRE_TIME 5
 
 /* number of package between each print */
 static uint32_t print_delay = 1000000;
 
 static uint32_t destination;
 
-void nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx);
-static void send_event(uint64_t event_id, void * pkt);
-void nf_setup(struct onvm_nf_local_ctx *nf_local_ctx);
+//static struct event_retrieve_data *event_data = NULL;
+/*Struct that holds all NF state information */
+struct state_info {
+        struct onvm_ft *ft;
+        uint16_t destination;
+        uint16_t print_delay;
+        uint16_t num_stored;
+        uint64_t elapsed_cycles;
+        uint64_t last_cycles;
+};
 
+struct subscription {
+        uint64_t event_id;
+        void (*event_cb)(void);
+};
+struct subscription *subscriptions[16];
+
+/*Struct that holds info about each flow, and is stored at each flow table entry */
+struct flow_stats {
+        int pkt_count;
+        uint64_t last_pkt_cycles;
+        int is_active;
+};
+
+struct state_info *state_info;
+void nf_setup(struct onvm_nf_local_ctx *nf_local_ctx);
+void msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx);
+void print_comrad(void);
+void print_comrad2(void);
+void print_comrad3(void);
 /*
  * Print a usage message
  */
@@ -178,74 +184,64 @@ do_stats_display(struct rte_mbuf *pkt) {
         }
 }
 
-static void
-send_event(uint64_t event_id, void *pkt)
-{
-	int i;
-	uint16_t nf_id;
-	struct event_tree_node *event;
-	
-	struct event_tree_node *root = events[ROOT_EVENT_ID];
-	event = get_event(root, event_id);
+void
+nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
+	printf("Hi boi %d\n", nf_local_ctx->nf->instance_id);
 
-	for (i = 0; i < event->subscriber_cnt; i++) {
-		nf_id = event->subscribers[i]->id;
-		send_event_data(event_id,nf_id,pkt);
+	struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
+        msg->type = RETRIEVE;
+        struct event_retrieve_data *data = rte_zmalloc("ev ret data", sizeof(struct event_retrieve_data), 0);
+        msg->data = (void *)data;
+        onvm_nflib_send_msg_to_nf(2, (void*)msg);
+	
+	while (data->done != 1)
+                sleep(1);
+
+	subscribe_nf(get_event(data->root, FLOW_NEW_EVENT_ID), 3, 1);
+	subscribe_nf(get_event(data->root, FLOW_LARGE_EVENT_ID), 3, 1);
+	subscribe_nf(get_event(data->root, FLOW_END_EVENT_ID), 3, 1);
+}
+
+void
+msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx){
+	printf("NF %d recieved msg\n", nf_local_ctx->nf->instance_id);
+	struct event_msg *msg1 = (struct event_msg *)msg_data;
+	struct onvm_event_msg *msg = (struct onvm_event_msg *) msg1->data;
+	if(msg->event_id==FLOW_NEW_EVENT_ID)
+	{
+		printf("************** FLOW_NEW_EVENT_ID  pkt***********\n");
+		onvm_pkt_print((struct rte_mbuf *)msg->pkt);
+        	printf("********************end pkt*******************\n\n\n");
+	}
+	else if(msg->event_id==FLOW_END_EVENT_ID){
+		printf("************** FLOW_END_EVENT_ID  pkt***********\n");
+		struct onvm_ft_ipv4_5tuple *key = (struct onvm_ft_ipv4_5tuple*)(msg->pkt);
+		_onvm_ft_print_key(key);
+                printf("********************end pkt*******************\n\n\n");
+	}
+	else if(msg->event_id==FLOW_LARGE_EVENT_ID){
+		printf("************** FLOW_LARGE_EVENT_ID  pkt***********\n");
+		onvm_pkt_print((struct rte_mbuf *)msg->pkt);
+		printf("********************end pkt*******************\n\n\n");
 	}
 }
 
 static int
 packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
                __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
+
         static uint32_t counter = 0;
         if (++counter == print_delay) {
                 do_stats_display(pkt);
                 counter = 0;
         }
-
-        meta->action = ONVM_NF_ACTION_TONF;
-        meta->destination = destination;
-        return 0;
-}
-void
-nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
-        struct event_msg *event_msg = (struct event_msg*)msg_data;
-
-        nf_local_ctx->nf = nf_local_ctx->nf;
-        if (event_msg->type == SUBSCRIBE) {
-                struct event_subscribe_data *msg = (struct event_subscribe_data *)event_msg->data;
-                subscribe_nf(msg->event, msg->id, msg->flow_id);
-        } else if (event_msg->type == RETRIEVE) {
-                struct event_retrieve_data *data = (struct event_retrieve_data*)event_msg->data;
-                data->root = events[ROOT_EVENT_ID];
-                data->done = 1;
-        } else if (event_msg->type == PUBLISH) {
-                struct event_publish_data *data = (struct event_publish_data*)event_msg->data;
-                add_event(ROOT_EVENT, data->event);
-                events[data->event->event_id] = data->event;
-                data->done = 1;
-        } else if (event_msg->type == SENT){
-		struct onvm_event_msg *event_msg_data = (struct onvm_event_msg*)event_msg->data;
-		send_event(event_msg_data->event_id,event_msg_data->pkt);
-	}
-	else {
-                printf("Recieved unknown event msg type - %d\n", event_msg->type);
+	if (pkt->port == 0) {
+                meta->destination = 1;
+        } else {
+                meta->destination = 0;
         }
-}
-
-void
-nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
-        events = (struct event_tree_node **) rte_calloc("root event", MAX_EVENTS, sizeof(struct event_tree_node *), 0);
-
-        ROOT_EVENT = gen_event_tree_node(ROOT_EVENT_ID);
-        PKT_EVENT = gen_event_tree_node(PKT_EVENT_ID);
-        FLOW_EVENT = gen_event_tree_node(FLOW_EVENT_ID);
-        add_event_node_child(ROOT_EVENT, PKT_EVENT);
-        add_event_node_child(ROOT_EVENT, FLOW_EVENT);
-        events[ROOT_EVENT_ID] = ROOT_EVENT;
-        events[PKT_EVENT_ID] = PKT_EVENT;
-        events[FLOW_EVENT_ID] =  FLOW_EVENT;
-        nf_local_ctx->nf->data = (void *)ROOT_EVENT;
+        meta->action = ONVM_NF_ACTION_OUT;
+        return 0;
 }
 
 int
@@ -261,8 +257,8 @@ main(int argc, char *argv[]) {
 
         nf_function_table = onvm_nflib_init_nf_function_table();
         nf_function_table->pkt_handler = &packet_handler;
-        nf_function_table->setup = &nf_setup;
-        nf_function_table->msg_handler = &nf_msg_handler;
+	nf_function_table->setup = &nf_setup;
+        nf_function_table->msg_handler = &msg_handler;
 
         if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
                 onvm_nflib_stop(nf_local_ctx);
