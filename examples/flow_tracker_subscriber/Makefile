@@ -44,10 +44,8 @@ RTE_TARGET ?= x86_64-native-linuxapp-gcc
 include $(RTE_SDK)/mk/rte.vars.mk
 
 # binary name
-#APP = simple_forward
 APP = flow_tracker_subscriber
 # all source are stored in SRCS-y
-#SRCS-y := forward.c
 SRCS-y := flow_tracker_subscriber.c
 
 # OpenNetVM path
