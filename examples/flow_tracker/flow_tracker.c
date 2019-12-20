@@ -272,8 +272,6 @@ table_lookup_entry(struct rte_mbuf *pkt, struct state_info *state_info) {
 
         int tbl_index = onvm_ft_lookup_key(state_info->ft, &key, (char **)&data);
         if (tbl_index == -ENOENT) {
-		//update
-		//publish_new_event(FLOW_NEW_EVENT_ID, pkt);
                 return table_add_entry(&key, state_info,pkt);
         } else if (tbl_index < 0) {
                 printf("Some other error occurred with the packet hashing\n");
