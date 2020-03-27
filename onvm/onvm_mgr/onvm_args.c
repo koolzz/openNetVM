@@ -129,7 +129,6 @@ parse_app_args(uint8_t max_ports, int argc, char *argv[]) {
             {"verbocity-level", no_argument, NULL, 'v'}, {"enable_shared_cpu", no_argument, NULL, 'c'}};
 
         progname = argv[0];
-	printf("mgr/onvm_arg.c max_ports:%d\n",max_ports);
         while ((opt = getopt_long(argc, argvopt, "p:r:n:d:s:t:l:z:v:c", lgopts, &option_index)) != EOF) {
                 switch (opt) {
                         case 'p':
@@ -229,7 +228,6 @@ parse_portmask(uint8_t max_ports, const char *portmask) {
         if (portmask == NULL)
                 return -1;
 
-	printf("mgr/onvm_args.c max_ports:%d, parse_portmask portmask:%s\n",max_ports,portmask);
         /* convert parameter to a number and verify */
         pm = strtoul(portmask, &end, 16);
         if (pm == 0) {
