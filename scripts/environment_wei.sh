@@ -4,8 +4,12 @@ sudo apt-get install libnuma-dev -y
 apt-get update
 
 cd /root/openNetVM
+git checkout pub_sub_nf_tracker
 echo export ONVM_HOME=$(pwd) >> ~/.bashrc
 
+cd
+git clone git@github.com:chandaweia/onvm-mos.git
+git checkout onvm-mos-new
 cd /root/onvm-mos/drivers/dpdk-18.11
 echo export RTE_SDK=$(pwd) >> ~/.bashrc
 echo export RTE_TARGET=x86_64-native-linuxapp-gcc >> ~/.bashrc
@@ -23,6 +27,7 @@ cd /root/openNetVM/scripts
 
 #compile onvm
 cd /root/openNetVM/onvm
+make
 
 #onvm-mos
 cd /root/onvm-mos

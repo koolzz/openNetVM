@@ -75,6 +75,10 @@ uint64_t EVENT_BITMASK;
 #define FLOW_END_EVENT_ID (FLOW_EVENT_ID + (0x3<<4))
 #define FLOW_LARGE_EVENT_ID (FLOW_EVENT_ID + (0x4<<4))
 
+#define FLOW_TCP_SYN_EVENT_ID (FLOW_TCP_EVENT_ID + (0x2<<8))
+#define FLOW_TCP_ESTABLISH_EVENT_ID (FLOW_TCP_EVENT_ID + (0x3<<8))
+#define FLOW_TCP_END_EVENT_ID (FLOW_TCP_EVENT_ID + (0x4<<8))
+
 #define STATS_EVENT_ID 0x3
 
 #define FLOW_REQ_EVENT_ID 0x4
@@ -216,6 +220,30 @@ add_event(struct event_tree_node *root, struct event_tree_node *child) {
                 }
         }
         return add_event_node_child(cur, child);
+}
+
+void
+subscribe_nf_noflow(struct event_tree_node *event, uint16_t nf_id) {
+        int i;
+        struct nf_subscriber *subscriber;
+
+        subscriber = NULL;
+        for (i = 0; i < event->subscriber_cnt; i++) {
+                if (event->subscribers[i]->id == nf_id)
+                        subscriber = event->subscribers[i];
+        }
+
+        if (subscriber == NULL) {
+                subscriber = gen_nf_subscriber();
+                subscriber->id = nf_id;
+                event->subscribers[event->subscriber_cnt] = subscriber;
+                event->subscriber_cnt++;
+        }
+        //subscriber->flows[flow_id] = 1;
+
+        for (i = 0; i < event->children_cnt; i++) {
+                subscribe_nf_noflow(event->children[i], nf_id);
+        }
 }
 
 void
