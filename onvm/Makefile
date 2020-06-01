@@ -49,4 +49,12 @@ DIRS-$(CONFIG_RTE_EXEC_ENV_LINUXAPP) += lib
 DIRS-$(CONFIG_RTE_EXEC_ENV_LINUXAPP) += onvm_nflib
 DIRS-$(CONFIG_RTE_EXEC_ENV_LINUXAPP) += onvm_mgr
 
+#solve the issues that cannot find rte_common.h when making rte
+DPDKPATH=/users/weicuidi/onvm-mos/drivers
+DPDK_INC=$(DPDKPATH)/dpdk/include
+DPDK_LIB=$(DPDKPATH)/dpdk/lib
+DPDK_MACHINE_FLAGS = $(shell cat $(DPDK_INC)/cflags.txt)
+INC += ${DPDK_MACHINE_FLAGS} -I${DPDK_INC} -include $(DPDK_INC)/rte_config.h
+LIBS += -export-dynamic -L$(DPDK_LIB)
+
 include $(RTE_SDK)/mk/rte.extsubdir.mk
