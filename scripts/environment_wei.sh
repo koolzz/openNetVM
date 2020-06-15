@@ -8,12 +8,13 @@ apt-get update
 ONVMPATH=/users/weicuidi/openNetVM
 ONVMMOSPATH=/users/weicuidi/onvm-mos
 
+git clone git@github.com:chandaweia/openNetVM.git
+git clone git@github.com:chandaweia/onvm-mos.git
 cd $ONVMPATH
 git checkout pub_sub_nf_tracker
 echo export ONVM_HOME=$(pwd) >> ~/.bashrc
 
-cd
-git clone git@github.com:chandaweia/onvm-mos.git
+cd $ONVMMOSPATH
 git checkout onvm-mos-new
 cd $ONVMMOSPATH/drivers/dpdk-18.11
 echo export RTE_SDK=$(pwd) >> ~/.bashrc
