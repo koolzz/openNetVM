@@ -344,6 +344,9 @@ main(int argc, char *argv[]) {
         struct onvm_nf_function_table *nf_function_table;
         const char *progname = argv[0];
 
+	int i=0;
+	for(;i<argc;i++)
+		printf("argv[%d]:%s\n",i,argv[i]);
         nf_local_ctx = onvm_nflib_init_nf_local_ctx();
         onvm_nflib_start_signal_handler(nf_local_ctx, NULL);
 

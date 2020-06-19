@@ -156,6 +156,7 @@ struct event_tree_node *
 gen_event_tree_node(uint64_t event_id) {
         struct event_tree_node *event;
         event = rte_zmalloc("event_node", sizeof(struct event_tree_node), 0);
+	//event = (struct event_tree_node*)malloc(sizeof(struct event_tree_node)*1);
         event->event_id = event_id;
 
         return event;
@@ -222,6 +223,7 @@ add_event(struct event_tree_node *root, struct event_tree_node *child) {
         return add_event_node_child(cur, child);
 }
 
+#if 0
 void
 subscribe_nf_noflow(struct event_tree_node *event, uint16_t nf_id) {
         int i;
@@ -245,6 +247,7 @@ subscribe_nf_noflow(struct event_tree_node *event, uint16_t nf_id) {
                 subscribe_nf_noflow(event->children[i], nf_id);
         }
 }
+#endif
 
 void
 subscribe_nf(struct event_tree_node *event, uint16_t nf_id, uint16_t flow_id) {
@@ -331,6 +334,7 @@ publish_event(uint16_t dest_controller,uint64_t event_id) {
         msg->type = PUBLISH;
         struct event_publish_data *data = rte_zmalloc("ev pub data", sizeof(struct event_publish_data), 0);
         data->event = gen_event_tree_node(event_id);
+	printf("publish_event1111111111111++++++++++data->event->event_id:%ld\n",+data->event->event_id);
         msg->data = (void *)data;
         onvm_nflib_send_msg_to_nf(dest_controller, (void*)msg);
 }

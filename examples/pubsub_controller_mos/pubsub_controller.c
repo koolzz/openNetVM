@@ -57,7 +57,7 @@
 #include "onvm_pkt_helper.h"
 #include "onvm_event.h"
 
-#define NF_TAG "simple_forward"
+#define NF_TAG "controller_mos"
 
 /*****************EVENT TYPES************************/
 struct event_tree_node *ROOT_EVENT;
@@ -240,11 +240,27 @@ nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
         ROOT_EVENT = gen_event_tree_node(ROOT_EVENT_ID);
         PKT_EVENT = gen_event_tree_node(PKT_EVENT_ID);
         FLOW_EVENT = gen_event_tree_node(FLOW_EVENT_ID);
+
+	struct event_tree_node *FLOW_TCP_EVENT = gen_event_tree_node(FLOW_TCP_EVENT_ID);
+
+	struct event_tree_node* FLOW_TCP_SYN_EVENT = gen_event_tree_node(FLOW_TCP_SYN_EVENT_ID);
+	struct event_tree_node* FLOW_TCP_ESTABLISH_EVENT = gen_event_tree_node(FLOW_TCP_ESTABLISH_EVENT_ID);
+	struct event_tree_node* FLOW_TCP_END_EVENT = gen_event_tree_node(FLOW_TCP_END_EVENT_ID);
+
         add_event_node_child(ROOT_EVENT, PKT_EVENT);
         add_event_node_child(ROOT_EVENT, FLOW_EVENT);
+	add_event_node_child(FLOW_EVENT, FLOW_TCP_EVENT);
+	add_event_node_child(FLOW_TCP_EVENT,FLOW_TCP_SYN_EVENT);
+	add_event_node_child(FLOW_TCP_EVENT,FLOW_TCP_ESTABLISH_EVENT);
+	add_event_node_child(FLOW_TCP_EVENT,FLOW_TCP_END_EVENT);
+
         events[ROOT_EVENT_ID] = ROOT_EVENT;
         events[PKT_EVENT_ID] = PKT_EVENT;
         events[FLOW_EVENT_ID] =  FLOW_EVENT;
+	events[FLOW_TCP_SYN_EVENT_ID] = FLOW_TCP_SYN_EVENT;
+	events[FLOW_TCP_ESTABLISH_EVENT_ID] = FLOW_TCP_ESTABLISH_EVENT;
+	events[FLOW_TCP_END_EVENT_ID] = FLOW_TCP_END_EVENT;
+
         nf_local_ctx->nf->data = (void *)ROOT_EVENT;
 }
 

@@ -210,24 +210,30 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
 void
 nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
         struct event_msg *event_msg = (struct event_msg*)msg_data;
+	printf("nf_msg_handler+++++++++++++++++++++++++\n");
 
         nf_local_ctx->nf = nf_local_ctx->nf;
         if (event_msg->type == SUBSCRIBE) {
+		printf("++++++++++++++++++++++++++SUBSCRIBE\n");
                 struct event_subscribe_data *msg = (struct event_subscribe_data *)event_msg->data;
                 subscribe_nf(msg->event, msg->id, msg->flow_id);
         } else if (event_msg->type == RETRIEVE) {
+		printf("++++++++++++++++++++++++++RETRIEVE\n");
                 struct event_retrieve_data *data = (struct event_retrieve_data*)event_msg->data;
                 data->root = events[ROOT_EVENT_ID];
                 data->done = 1;
         } else if (event_msg->type == PUBLISH) {
+		printf("++++++++++++++++++++++++++PUBLISH\n");
                 struct event_publish_data *data = (struct event_publish_data*)event_msg->data;
                 add_event(ROOT_EVENT, data->event);
                 events[data->event->event_id] = data->event;
                 data->done = 1;
         } else if (event_msg->type == SENT){
+		printf("++++++++++++++++++++++++++SENT\n");
 		struct onvm_event_msg *event_msg_data = (struct onvm_event_msg*)event_msg->data;
 		send_event(event_msg_data->event_id,event_msg_data->pkt);
 	}
+
 	else {
                 printf("Recieved unknown event msg type - %d\n", event_msg->type);
         }
