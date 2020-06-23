@@ -362,7 +362,10 @@ void send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt){
 
         struct onvm_event_msg *msg_event = rte_zmalloc("ev msg", sizeof(struct onvm_event_msg), 0);
         msg_event->event_id = event_id;
-        msg_event->pkt = pkt;
+	if( pkt== NULL)
+		msg_event->pkt = NULL;
+	else
+	        msg_event->pkt = pkt;
 
         msg->data = (void *)msg_event;
 
