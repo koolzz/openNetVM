@@ -52,6 +52,7 @@
 #include <rte_common.h>
 #include <rte_ip.h>
 #include <rte_mbuf.h>
+#include <rte_memcpy.h>
 
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
@@ -226,6 +227,8 @@ nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
                 data->done = 1;
         } else if (event_msg->type == SENT){
 		struct onvm_event_msg *event_msg_data = (struct onvm_event_msg*)event_msg->data;
+                char *data1 = (char*)(event_msg_data->pkt);
+                printf("event_msg->event_id:%ld, data1:%s\n",event_msg_data->event_id,data1);
 		send_event(event_msg_data->event_id,event_msg_data->pkt);
 	}
 	else {

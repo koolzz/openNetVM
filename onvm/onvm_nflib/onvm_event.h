@@ -43,6 +43,7 @@
 #define _ONVM_EVENT_H_
 
 #include <rte_malloc.h>
+#include <rte_memcpy.h>
 
 #include "onvm_common.h"
 
@@ -334,7 +335,6 @@ publish_event(uint16_t dest_controller,uint64_t event_id) {
         msg->type = PUBLISH;
         struct event_publish_data *data = rte_zmalloc("ev pub data", sizeof(struct event_publish_data), 0);
         data->event = gen_event_tree_node(event_id);
-	printf("publish_event1111111111111++++++++++data->event->event_id:%ld\n",+data->event->event_id);
         msg->data = (void *)data;
         onvm_nflib_send_msg_to_nf(dest_controller, (void*)msg);
 }
@@ -357,17 +357,27 @@ test_sending_event(uint64_t event_id, uint16_t dest_id) {
 }
 
 void send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt){
+        char *pkt1 = "123";
+        char *strpkt = (char*)pkt1;
+        printf("send_event_data strpkt:%s+++++++++++++++++\n",strpkt);
 	struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
+        //struct event_msg *msg = (struct event_msg *)malloc(sizeof(struct event_msg));
         msg->type = SENT;
 
+        printf("send_event_data，event_id：%ld+++++++++++++++++===1\n", event_id);
         struct onvm_event_msg *msg_event = rte_zmalloc("ev msg", sizeof(struct onvm_event_msg), 0);
+        //struct onvm_event_msg *msg_event = (struct onvm_event_msg *)malloc(sizeof(struct onvm_event_msg));
         msg_event->event_id = event_id;
-	if( pkt== NULL)
+	if( pkt== NULL){
+                printf("send_event_data pkt is NULL++++++++++++++\n");
 		msg_event->pkt = NULL;
+        }
 	else
-	        msg_event->pkt = pkt;
+                //memcpy(msg_event->pkt,pkt,strlen(pkt));
+	        msg_event->pkt = pkt1;
 
         msg->data = (void *)msg_event;
+        printf("send_event_data++++++++++++++\n");
 
         onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
 }

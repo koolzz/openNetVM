@@ -46,7 +46,7 @@ include $(RTE_SDK)/mk/rte.vars.mk
 # binary name
 APP = flow_sub_mos
 # all source are stored in SRCS-y
-SRCS-y := flow_tracker_subscriber.c
+SRCS-y := flow_sub_mos.c
 
 # OpenNetVM path
 ONVM= $(SRCDIR)/../../onvm

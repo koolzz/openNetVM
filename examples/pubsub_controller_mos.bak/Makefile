@@ -47,7 +47,7 @@ include $(RTE_SDK)/mk/rte.vars.mk
 APP = pubsub_controller_mos
 
 # all source are stored in SRCS-y
-SRCS-y := pubsub_controller_mos.c
+SRCS-y := pubsub_controller.c
 
 # OpenNetVM path
 ONVM= $(SRCDIR)/../../onvm
