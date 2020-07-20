@@ -219,9 +219,9 @@ nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
 	while (data->done != 1)
                 sleep(1);
 
-	subscribe_nf(get_event(data->root, FLOW_TCP_SYN_EVENT_ID), 3, 1);
-	subscribe_nf(get_event(data->root, FLOW_TCP_ESTABLISH_EVENT_ID), 3, 1);
-	subscribe_nf(get_event(data->root, FLOW_TCP_END_EVENT_ID), 3, 1);
+	subscribe_nf_noflow(get_event(data->root, FLOW_TCP_SYN_EVENT_ID), 3);
+	subscribe_nf_noflow(get_event(data->root, FLOW_TCP_ESTABLISH_EVENT_ID), 3);
+	subscribe_nf_noflow(get_event(data->root, FLOW_TCP_END_EVENT_ID), 3);
 }
 
 void
@@ -234,11 +234,12 @@ msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx){
 		printf("************** FLOW_TCP_SYN_EVENT_ID  pkt***********\n");
 	}
 	else if(msg->event_id==FLOW_TCP_ESTABLISH_EVENT_ID){
-	        printf("************** FLOW_TCP_ESTABLISH_EVENT_ID  pkt***********\n");
-                //truct pkt_info *pi = (struct pkt_info *)msg->pkt;
-                char *data1 = (char*)msg->pkt;
+	        printf("************** FLOW_TCP_ESTABLISH_EVENT_ID ***********\n");                
+                //char *recv_pkt = (char*)msg->pkt;
+                //printf("%s\n",recv_pkt);
+                /*char *data1 = (char*)msg->pkt;
                 if(data1 != NULL)
-                        printf("%s\n",data1);
+                        printf("%s\n",data1);*/
                 //printf("********************end pkt*******************\n\n\n");
 	}
 	else if(msg->event_id==FLOW_TCP_END_EVENT_ID){

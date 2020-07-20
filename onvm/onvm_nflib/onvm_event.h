@@ -140,6 +140,7 @@ struct event_tree_node *gen_event_tree_node(uint64_t event_id);
 struct nf_subscriber *gen_nf_subscriber(void);
 int add_event(struct event_tree_node *root, struct event_tree_node *child);
 void subscribe_nf(struct event_tree_node *event, uint16_t id, uint16_t flow_id);
+void subscribe_nf_noflow(struct event_tree_node *event, uint16_t nf_id);
 int nf_subscribed_to_event(struct event_tree_node *root, uint64_t event_id, uint16_t nf_id, uint16_t flow_id);
 struct event_tree_node *get_event(struct event_tree_node *root, uint64_t event_id);
 
@@ -224,7 +225,7 @@ add_event(struct event_tree_node *root, struct event_tree_node *child) {
         return add_event_node_child(cur, child);
 }
 
-#if 0
+#if 1
 void
 subscribe_nf_noflow(struct event_tree_node *event, uint16_t nf_id) {
         int i;
@@ -357,16 +358,13 @@ test_sending_event(uint64_t event_id, uint16_t dest_id) {
 }
 
 void send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt){
-        char *pkt1 = "123";
-        char *strpkt = (char*)pkt1;
-        printf("send_event_data strpkt:%s+++++++++++++++++\n",strpkt);
+        //char *strpkt = (char*)pkt;
+        //printf("send_event_data strpkt:%s+++++++++++++++++\n",(char*)strpkt);
 	struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
-        //struct event_msg *msg = (struct event_msg *)malloc(sizeof(struct event_msg));
         msg->type = SENT;
 
-        printf("send_event_data，event_id：%ld+++++++++++++++++===1\n", event_id);
+        //printf("send_event_data，event_id：%ld+++++++++++++++++===1\n", event_id);
         struct onvm_event_msg *msg_event = rte_zmalloc("ev msg", sizeof(struct onvm_event_msg), 0);
-        //struct onvm_event_msg *msg_event = (struct onvm_event_msg *)malloc(sizeof(struct onvm_event_msg));
         msg_event->event_id = event_id;
 	if( pkt== NULL){
                 printf("send_event_data pkt is NULL++++++++++++++\n");
@@ -374,10 +372,10 @@ void send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt){
         }
 	else
                 //memcpy(msg_event->pkt,pkt,strlen(pkt));
-	        msg_event->pkt = pkt1;
+	        msg_event->pkt = pkt;
 
         msg->data = (void *)msg_event;
-        printf("send_event_data++++++++++++++\n");
+        //rintf("send_event_data++++++++++++++\n");
 
         onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
 }
