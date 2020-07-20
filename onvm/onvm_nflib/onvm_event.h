@@ -358,24 +358,19 @@ test_sending_event(uint64_t event_id, uint16_t dest_id) {
 }
 
 void send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt){
-        //char *strpkt = (char*)pkt;
-        //printf("send_event_data strpkt:%s+++++++++++++++++\n",(char*)strpkt);
 	struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
         msg->type = SENT;
 
-        //printf("send_event_data，event_id：%ld+++++++++++++++++===1\n", event_id);
         struct onvm_event_msg *msg_event = rte_zmalloc("ev msg", sizeof(struct onvm_event_msg), 0);
         msg_event->event_id = event_id;
 	if( pkt== NULL){
-                printf("send_event_data pkt is NULL++++++++++++++\n");
 		msg_event->pkt = NULL;
         }
-	else
-                //memcpy(msg_event->pkt,pkt,strlen(pkt));
-	        msg_event->pkt = pkt;
-
+	else{
+                msg_event->pkt = pkt;
+        }
+	
         msg->data = (void *)msg_event;
-        //rintf("send_event_data++++++++++++++\n");
 
         onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
 }
