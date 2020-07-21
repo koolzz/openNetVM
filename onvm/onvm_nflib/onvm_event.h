@@ -372,7 +372,14 @@ void send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt){
 	
         msg->data = (void *)msg_event;
 
-        onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
+        //printf("send_event_data\n");
+        int ret = onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
+        if (ret != 0)
+        {
+                printf("onvm_event.h onvm_nflib_send_msg_to_nf\n");
+                exit(-1);
+        }
+        //printf("send_event_data end++++++++++\n");
 }
 
 
