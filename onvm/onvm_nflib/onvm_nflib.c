@@ -533,6 +533,7 @@ onvm_nflib_run(struct onvm_nf_local_ctx *nf_local_ctx) {
 
 void *
 onvm_nflib_thread_main_loop(void *arg) {
+        printf("onvm_nflib_thread_main_loop++++++++++++++++++\n");
         struct rte_mbuf *pkts[PACKET_READ_SIZE];
         struct onvm_nf_local_ctx *nf_local_ctx;
         struct onvm_nf *nf;
@@ -649,7 +650,7 @@ onvm_nflib_handle_msg(struct onvm_nf_msg *msg, struct onvm_nf_local_ctx *nf_loca
                         onvm_nflib_scale((struct onvm_nf_scale_info*)msg->msg_data);
                         break;
                 case MSG_FROM_NF:
-                        //RTE_LOG(INFO, APP, "Recieved MSG from other NF\n");
+                        RTE_LOG(INFO, APP, "Received MSG from other NF\n");
                         if (nf_local_ctx->nf->function_table->msg_handler != NULL) {
                                 nf_local_ctx->nf->function_table->msg_handler(msg->msg_data, nf_local_ctx);
                         }
@@ -669,14 +670,29 @@ onvm_nflib_send_msg_to_nf(uint16_t dest, void *msg_data) {
 
         ret = rte_mempool_get(nf_msg_pool, (void**)(&msg));
         if (ret != 0) {
-                RTE_LOG(INFO, APP, "Oh the huge manatee! Unable to allocate msg from pool :(\n");
+                RTE_LOG(INFO, APP, "Unable to allocate msg from pool when trying to send msg to nf\n");
+                exit(-1);
                 return ret;
         }
 
         msg->msg_type = MSG_FROM_NF;
         msg->msg_data = msg_data;
 
-        return rte_ring_enqueue(nfs[dest].msg_q, (void*)msg);
+        //int count = rte_ring_count(nfs[dest].msg_q);
+        /*while(rte_ring_full(nfs[dest].msg_q) ==1)
+        {
+                sleep(1);
+        }*/
+
+        ret = rte_ring_enqueue(nfs[dest].msg_q, (void*)msg);
+        if (ret != 0) {
+                /* ring is full so we need to free the object */
+                rte_mempool_put(nf_msg_pool, msg);
+        }
+        
+        return ret;
+
+
 }
 
 void
@@ -898,6 +914,7 @@ onvm_nflib_parse_config(struct onvm_configuration *config) {
 
 static inline uint16_t
 onvm_nflib_dequeue_packets(void **pkts, struct onvm_nf_local_ctx *nf_local_ctx, nf_pkt_handler_fn  handler) {
+        
         struct onvm_nf *nf;
         struct onvm_pkt_meta *meta;
         uint16_t i, nb_pkts;
@@ -951,8 +968,12 @@ onvm_nflib_dequeue_messages(struct onvm_nf_local_ctx *nf_local_ctx) {
                 return;
         }
         msg = NULL;
+        int q_count1 = rte_ring_count(msg_q);
         rte_ring_dequeue(msg_q, (void **)(&msg));
+        int q_count2 = rte_ring_count(msg_q);
+        printf("onvm_nflib_dequeue_messages msg_q before:%d,after:%d\n",q_count1,q_count2);
         onvm_nflib_handle_msg(msg, nf_local_ctx);
+        //printf("onvm_nflib_dequeue_messages rte_mempool_put++++++++++++++++\n");
         rte_mempool_put(nf_msg_pool, (void *)msg);
 }
 

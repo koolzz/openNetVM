@@ -368,18 +368,23 @@ void send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt){
         }
 	else{
                 msg_event->pkt = pkt;
+                /*msg_event->pkt = rte_zmalloc("ev msg", sizeof(char), 0);
+                printf("send_event_data rte_zmalloc+++++++2\n");
+                rte_memcpy(msg_event->pkt, pkt, strlen((char*)pkt));
+                printf("send_event_data rte_zmalloc+++++++3\n");*/
         }
 	
         msg->data = (void *)msg_event;
 
-        //printf("send_event_data\n");
+        //onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
+        #if 1
         int ret = onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
         if (ret != 0)
         {
                 printf("onvm_event.h onvm_nflib_send_msg_to_nf\n");
                 exit(-1);
         }
-        //printf("send_event_data end++++++++++\n");
+        #endif
 }
 
 
