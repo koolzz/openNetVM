@@ -182,22 +182,22 @@ do_stats_display(struct rte_mbuf *pkt) {
 static void
 send_event(uint64_t event_id, void *pkt)
 {
-        printf("send_event:event_id:%ld\n",event_id);
+        //printf("send_event:event_id:%ld\n",event_id);
 	int i;
 	uint16_t nf_id;
 	struct event_tree_node *event;
        
 	struct event_tree_node *root = events[ROOT_EVENT_ID];
 	event = get_event(root, event_id);
-        printf("event->subscriber_cnt:%d\n",event->subscriber_cnt);
+        //printf("event->subscriber_cnt:%d\n",event->subscriber_cnt);
         
 	for (i = 0; i < event->subscriber_cnt; i++) {
-                printf("send_event++++++++++++1 i:%d\n",i);
-                printf("event->subscribers[i]->id:%d\n",event->subscribers[i]->id);
+                //printf("send_event++++++++++++1 i:%d\n",i);
+                //printf("event->subscribers[i]->id:%d\n",event->subscribers[i]->id);
 		nf_id = event->subscribers[i]->id;
-		//send_event_data(event_id,nf_id,pkt);
+		send_event_data(event_id,nf_id,pkt);
 	}
-        printf("send_event end\n");
+        
 }
 
 static int
@@ -230,7 +230,7 @@ nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
                 add_event(ROOT_EVENT, data->event);
                 events[data->event->event_id] = data->event;
                 data->done = 1;
-        } else if (event_msg->type == SENT){
+        } else if (event_msg->type == SEND){
 		struct onvm_event_msg *event_msg_data = (struct onvm_event_msg*)event_msg->data;
                 //char *data1 = (char*)(event_msg_data->pkt);
                 //printf("event_msg->event_id:%ld, data1:%s\n",event_msg_data->event_id,data1);

@@ -55,13 +55,13 @@
 #define RETRIEVE 1
 #define SUBSCRIBE 2
 #define PUBLISH 3
-#define SENT 4
+#define SEND 4
 
 uint64_t EVENT_BITMASK;
 
 /*****************EVENT IDS************************/
 // 4 bits represent a prefix, 0 is reserved => 15 max prefix variations
-#define ROOT_EVENT_ID 0
+#define ROOT_EVENT_ID 0 
 
 #define PKT_EVENT_ID 0x1
 #define PKT_TCP_EVENT_ID (PKT_EVENT_ID + (0x1<<4))
@@ -106,10 +106,7 @@ struct event_publish_data {
         int done;
 };
 
-struct event_msg {
-        int type; 
-        void *data;
-};
+
 
 struct nf_subscriber {
         uint16_t id;
@@ -129,11 +126,24 @@ struct event_tree {
         struct onvm_tree_node *children[MAX_EVENTS]; // sub events
 };
 
+// TODO: Merge event_msg and onvm_event_msg into one struct. and call it struct pub_sub_msg
+struct event_msg {
+        int type; 
+        void *data;
+};
+
 /* Sent to NF instead of pkts (Grace had the actual struct this is just a quick definition for testing purpouses */
 struct onvm_event_msg {
         uint64_t event_id;
-        void *pkt;
+        void *pkt;      // TODO: rename to data
 };
+
+//Merge event_msg and onvm_event_msg into one struct
+/*struct pub_sub_msg{
+        uint32_t type;
+        uint64_t event_id;
+        void *data;
+}*/
 
 /* Public APIs */
 struct event_tree_node *gen_event_tree_node(uint64_t event_id);
@@ -359,9 +369,13 @@ test_sending_event(uint64_t event_id, uint16_t dest_id) {
 
 void send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt){
 	struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
-        msg->type = SENT;
+        msg->type = SEND;
 
         struct onvm_event_msg *msg_event = rte_zmalloc("ev msg", sizeof(struct onvm_event_msg), 0);
+
+        // TODO: combine the above two structs and then use mempool_get here instead of zmalloc
+        //       somewhere when the NF initializes it will have to create a new mempool - pubsub_msg_pool
+
         msg_event->event_id = event_id;
 	if( pkt== NULL){
 		msg_event->pkt = NULL;
@@ -375,17 +389,62 @@ void send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt){
         }
 	
         msg->data = (void *)msg_event;
+        onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
 
-        //onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
-        #if 1
-        int ret = onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
-        if (ret != 0)
+        /*int ret = onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
+        while (ret != 0)
         {
-                printf("onvm_event.h onvm_nflib_send_msg_to_nf\n");
-                exit(-1);
-        }
-        #endif
+                ret = onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
+                //printf("onvm_event.h onvm_nflib_send_msg_to_nf\n");
+                //exit(-1);
+        }*/
 }
 
+#if 0
+void send_event_msg(uint64_t event_id, uint16_t dest_id, void *data)
+{
+        struct pub_sub_msg *msg = rte_zmalloc("ev msg", sizeof(struct pub_sub_msg), 0);
+        
+        msg->type = SEND;
+        msg->event_id = event_id;
+        msg->data = data;
+
+        int ret = onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
+        while (ret != 0)
+        {
+                ret = onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
+                //printf("onvm_event.h onvm_nflib_send_msg_to_nf\n");
+                //exit(-1);
+        }
+
+}
+#endif
+
+#if 0
+int send_event_msg(uint64_t event_id, uint16_t dest_id, void *data)
+{
+        struct pub_sub_msg *msg;
+        int ret = rte_mempool_get(pubsub_msg_pool, void(**)&msg);
+        if (ret != 0) {
+                RTE_LOG(INFO, APP, "Unable to allocate msg from pool when trying to send msg to nf\n");
+                rte_mempool_put(pubsub_msg_pool,msg);
+                //exit(-1);
+                return ret;
+        }
+        msg->type = SEND;
+        msg->event_id = event_id;
+        msg->data = data;
+
+        int ret = onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
+        while (ret != 0)
+        {
+                ret = onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
+                //printf("onvm_event.h onvm_nflib_send_msg_to_nf\n");
+                //exit(-1);
+        }
+        return ret;
+
+}
+#endif //by store pubsub_msg into pool.
 
 #endif  // _ONVM_EVENT_H_

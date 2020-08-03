@@ -650,7 +650,7 @@ onvm_nflib_handle_msg(struct onvm_nf_msg *msg, struct onvm_nf_local_ctx *nf_loca
                         onvm_nflib_scale((struct onvm_nf_scale_info*)msg->msg_data);
                         break;
                 case MSG_FROM_NF:
-                        RTE_LOG(INFO, APP, "Received MSG from other NF\n");
+                        //RTE_LOG(INFO, APP, "Received MSG from other NF\n");
                         if (nf_local_ctx->nf->function_table->msg_handler != NULL) {
                                 nf_local_ctx->nf->function_table->msg_handler(msg->msg_data, nf_local_ctx);
                         }
@@ -662,7 +662,7 @@ onvm_nflib_handle_msg(struct onvm_nf_msg *msg, struct onvm_nf_local_ctx *nf_loca
 
         return 0;
 }
-
+ 
 int
 onvm_nflib_send_msg_to_nf(uint16_t dest, void *msg_data) {
         int ret;
@@ -671,7 +671,7 @@ onvm_nflib_send_msg_to_nf(uint16_t dest, void *msg_data) {
         ret = rte_mempool_get(nf_msg_pool, (void**)(&msg));
         if (ret != 0) {
                 RTE_LOG(INFO, APP, "Unable to allocate msg from pool when trying to send msg to nf\n");
-                exit(-1);
+                //exit(-1);
                 return ret;
         }
 
@@ -687,6 +687,7 @@ onvm_nflib_send_msg_to_nf(uint16_t dest, void *msg_data) {
         ret = rte_ring_enqueue(nfs[dest].msg_q, (void*)msg);
         if (ret != 0) {
                 /* ring is full so we need to free the object */
+                //printf("onvm_nflib_send_msg_to_nf ring is full so we need to free the object\n");
                 rte_mempool_put(nf_msg_pool, msg);
         }
         
@@ -694,6 +695,7 @@ onvm_nflib_send_msg_to_nf(uint16_t dest, void *msg_data) {
 
 
 }
+
 
 void
 onvm_nflib_stop(struct onvm_nf_local_ctx *nf_local_ctx) {
@@ -968,10 +970,10 @@ onvm_nflib_dequeue_messages(struct onvm_nf_local_ctx *nf_local_ctx) {
                 return;
         }
         msg = NULL;
-        int q_count1 = rte_ring_count(msg_q);
+        //int q_count1 = rte_ring_count(msg_q);
         rte_ring_dequeue(msg_q, (void **)(&msg));
-        int q_count2 = rte_ring_count(msg_q);
-        printf("onvm_nflib_dequeue_messages msg_q before:%d,after:%d\n",q_count1,q_count2);
+        //int q_count2 = rte_ring_count(msg_q);
+        //printf("onvm_nflib_dequeue_messages msg_q before:%d,after:%d\n",q_count1,q_count2);
         onvm_nflib_handle_msg(msg, nf_local_ctx);
         //printf("onvm_nflib_dequeue_messages rte_mempool_put++++++++++++++++\n");
         rte_mempool_put(nf_msg_pool, (void *)msg);
