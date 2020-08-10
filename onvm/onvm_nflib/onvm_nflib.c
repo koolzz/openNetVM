@@ -567,6 +567,7 @@ onvm_nflib_thread_main_loop(void *arg) {
                 onvm_pkt_enqueue_tx_thread(nf->nf_tx_mgr->to_tx_buf, nf);
                 onvm_pkt_flush_all_nfs(nf->nf_tx_mgr, nf);
 
+                //onvm_nflib_thread_main_loop -> onvm_nflib_dequeue_messages -> onvm_nflib_handle_msg -> msg_handler
                 onvm_nflib_dequeue_messages(nf_local_ctx);
                 if (nf->function_table->user_actions != ONVM_NO_CALLBACK) {
                         rte_atomic16_set(&nf_local_ctx->keep_running,
@@ -687,13 +688,11 @@ onvm_nflib_send_msg_to_nf(uint16_t dest, void *msg_data) {
         ret = rte_ring_enqueue(nfs[dest].msg_q, (void*)msg);
         if (ret != 0) {
                 /* ring is full so we need to free the object */
-                //printf("onvm_nflib_send_msg_to_nf ring is full so we need to free the object\n");
+                printf("onvm_nflib_send_msg_to_nf ring is full so we need to free the object\n");
                 rte_mempool_put(nf_msg_pool, msg);
         }
         
         return ret;
-
-
 }
 
 
@@ -960,7 +959,8 @@ onvm_nflib_dequeue_packets(void **pkts, struct onvm_nf_local_ctx *nf_local_ctx, 
 
 static inline void
 onvm_nflib_dequeue_messages(struct onvm_nf_local_ctx *nf_local_ctx) {
-        struct onvm_nf_msg *msg;
+        
+        //struct onvm_nf_msg *msg=NULL;
         struct rte_ring *msg_q;
 
         msg_q = nf_local_ctx->nf->msg_q;
@@ -969,14 +969,34 @@ onvm_nflib_dequeue_messages(struct onvm_nf_local_ctx *nf_local_ctx) {
         if (likely(rte_ring_count(msg_q) == 0)) {
                 return;
         }
-        msg = NULL;
         //int q_count1 = rte_ring_count(msg_q);
-        rte_ring_dequeue(msg_q, (void **)(&msg));
+        //rte_ring_dequeue(msg_q, (void **)(&msg));
+        //rte_mempool_put(nf_msg_pool, (void *)msg);
+        uint16_t i, nb_msgs;
+        struct onvm_nf_msg *msgs[PACKET_READ_SIZE];
+        nb_msgs = rte_ring_dequeue_burst(msg_q, (void **)msgs, PACKET_READ_SIZE, NULL); //in here, we define the number of msgs is PACKET_READ_SIZE.
         //int q_count2 = rte_ring_count(msg_q);
+        /* Possibly sleep if in shared core mode, otherwise return */
+        //I'm not sure whether this part should be added. ???
+        /*if (unlikely(nb_msgs == 0)) {
+                if (ONVM_NF_SHARE_CORES) {
+                        rte_atomic16_set(nf->shared_core.sleep_state, 1);
+                        sem_wait(nf->shared_core.nf_mutex);
+                }
+                return;
+        }*/
         //printf("onvm_nflib_dequeue_messages msg_q before:%d,after:%d\n",q_count1,q_count2);
-        onvm_nflib_handle_msg(msg, nf_local_ctx);
-        //printf("onvm_nflib_dequeue_messages rte_mempool_put++++++++++++++++\n");
-        rte_mempool_put(nf_msg_pool, (void *)msg);
+        
+        for(i = 0; i < nb_msgs; i++)
+        {
+                
+                onvm_nflib_handle_msg(msgs[i], nf_local_ctx);
+                //msgs[i] = NULL;
+                rte_mempool_put(nf_msg_pool, (void *)msgs[i]);
+        }
+
+
+
 }
 
 static void *

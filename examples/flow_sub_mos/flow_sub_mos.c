@@ -246,6 +246,9 @@ msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx){
 	else if(msg->event_id==FLOW_TCP_END_EVENT_ID){
 		//printf("************** FLOW_TCP_END_EVENT_ID  pktCount:%d***********\n",++pktCount);
 	}
+        rte_free((void*)msg->pkt);
+        rte_free((void*)msg);
+        rte_free((void*)msg1);
 }
 
 static int

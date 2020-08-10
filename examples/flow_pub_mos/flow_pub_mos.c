@@ -85,6 +85,7 @@ sigint_handler(int signum)
 /*Init event to try to connect with controller*/
 static void event_init(uint16_t dest_controller)
 {
+	printf("event_init+++++++++++++++++\n");
 	struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
 	msg->type = RETRIEVE;
 	struct event_retrieve_data *data = rte_zmalloc("ev ret data", sizeof(struct event_retrieve_data), 0);
@@ -140,7 +141,7 @@ cb_creation(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 		exit(EXIT_FAILURE); 
 	}
 	#endif
-	
+	 
 	/* Send msg to controller*/
 	//char *str1 = "TCP SYN";
 	#if 0
@@ -157,7 +158,6 @@ cb_creation(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 	send_event_data(FLOW_TCP_SYN_EVENT_ID, destination_id, NULL);
  
 	/* Insert the structure to the queue */
-	
 	TAILQ_INSERT_TAIL(&g_sockq[mctx->cpu], c, link);
 	#ifdef TIME_STAT
 	UpdateStatCounter(&stat_cb_creation, rdtscll() - start_tsc);
@@ -406,7 +406,7 @@ RegisterCallbacks(mctx_t mctx, int sock, event_t ev_new_syn)
 {
 	printf("=============================RegisterCallbacks=====================\n");
 	//publish_ev_to_controller(PUBSUB_CONTROLLER_ID,FLOW_TCP_SYN_EVENT_ID);
-	event_init(destination_id);
+	
 	#if PRINT_STAT
 	struct timeval tv_1sec = { /* 1 second */
 		.tv_sec = 1,
@@ -493,6 +493,7 @@ InitMonitor(mctx_t mctx, event_t ev_new_syn)
 	#endif
 
 	RegisterCallbacks(mctx, sock, ev_new_syn);
+	event_init(destination_id);
 }
 /*----------------------------------------------------------------------------*/
 int 
@@ -562,9 +563,10 @@ main(int argc, char **argv)
 	}
 	/* init monitor */
 	InitMonitor(g_mctx[g_run_core], ev_new_syn);
-
+	
 	/* wait until mOS finishes */
 	mtcp_app_join(g_mctx[g_run_core]);
+	
 #else
 	printf("ONVM is disabled!\n\n");
 	for (i = 0; i < g_max_cores; i++) {

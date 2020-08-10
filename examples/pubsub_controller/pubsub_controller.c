@@ -228,8 +228,8 @@ nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
                 add_event(ROOT_EVENT, data->event);
                 events[data->event->event_id] = data->event;
                 data->done = 1;
-        } else if (event_msg->type == SENT){
-		printf("++++++++++++++++++++++++++SENT\n");
+        } else if (event_msg->type == SEND){
+		printf("++++++++++++++++++++++++++SEND\n");
 		struct onvm_event_msg *event_msg_data = (struct onvm_event_msg*)event_msg->data;
 		send_event(event_msg_data->event_id,event_msg_data->pkt);
 	}

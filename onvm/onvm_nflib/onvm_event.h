@@ -377,27 +377,25 @@ void send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt){
         //       somewhere when the NF initializes it will have to create a new mempool - pubsub_msg_pool
 
         msg_event->event_id = event_id;
-	if( pkt== NULL){
+        msg_event->pkt = pkt;
+        
+	/*if( pkt== NULL){
 		msg_event->pkt = NULL;
         }
 	else{
                 msg_event->pkt = pkt;
-                /*msg_event->pkt = rte_zmalloc("ev msg", sizeof(char), 0);
-                printf("send_event_data rte_zmalloc+++++++2\n");
-                rte_memcpy(msg_event->pkt, pkt, strlen((char*)pkt));
-                printf("send_event_data rte_zmalloc+++++++3\n");*/
-        }
+        }*/
 	
         msg->data = (void *)msg_event;
-        onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
+        //onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
 
-        /*int ret = onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
+        int ret = onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
         while (ret != 0)
         {
                 ret = onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
-                //printf("onvm_event.h onvm_nflib_send_msg_to_nf\n");
+                //printf("onvm_event.h onvm_nflib_send_msg_to_nf resend msgs\n");
                 //exit(-1);
-        }*/
+        }
 }
 
 #if 0

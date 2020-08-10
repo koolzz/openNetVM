@@ -89,7 +89,7 @@ static uint32_t print_delay = 1000000;
 static uint32_t destination;
 
 void nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx);
-static void send_event(uint64_t event_id, void * pkt);
+static void send_event(uint64_t event_id, void *msg);
 void nf_setup(struct onvm_nf_local_ctx *nf_local_ctx);
 
 /*
@@ -179,6 +179,7 @@ do_stats_display(struct rte_mbuf *pkt) {
         }
 }
 
+#if 0
 static void
 send_event(uint64_t event_id, void *pkt)
 {
@@ -199,6 +200,31 @@ send_event(uint64_t event_id, void *pkt)
 	}
         
 }
+#endif
+static void
+send_event(uint64_t event_id, void *msg)
+{
+        //printf("send_event:event_id:%ld\n",event_id);
+	int i;
+	uint16_t nf_id;
+	struct event_tree_node *event;
+        int ret;
+       
+	struct event_tree_node *root = events[ROOT_EVENT_ID];
+	event = get_event(root, event_id);
+        //printf("event->subscriber_cnt:%d\n",event->subscriber_cnt);
+        
+	for (i = 0; i < event->subscriber_cnt; i++) {
+                //printf("event->subscribers[i]->id:%d\n",event->subscribers[i]->id);
+		nf_id = event->subscribers[i]->id;
+		ret = onvm_nflib_send_msg_to_nf(nf_id, msg);
+                while (ret != 0)
+                {
+                       ret = onvm_nflib_send_msg_to_nf(nf_id, msg);
+                }
+	}
+        
+}
 
 static int
 packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
@@ -215,6 +241,7 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
 }
 void
 nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
+        //event_msg -> pub_sub_msg
         struct event_msg *event_msg = (struct event_msg*)msg_data;
 
         nf_local_ctx->nf = nf_local_ctx->nf;
@@ -231,10 +258,14 @@ nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
                 events[data->event->event_id] = data->event;
                 data->done = 1;
         } else if (event_msg->type == SEND){
+                //change onvm_event_msg to event_send_msg;
 		struct onvm_event_msg *event_msg_data = (struct onvm_event_msg*)event_msg->data;
+                /*rte_free((void*)event_msg_data->pkt);
+                rte_free((void*)event_msg_data);
+                rte_free((void*)event_msg);*/
                 //char *data1 = (char*)(event_msg_data->pkt);
                 //printf("event_msg->event_id:%ld, data1:%s\n",event_msg_data->event_id,data1);
-		send_event(event_msg_data->event_id, event_msg_data->pkt);
+		send_event(event_msg_data->event_id, (void*)event_msg);
 	}
 	else {
                 printf("Recieved unknown event msg type - %d\n", event_msg->type);
