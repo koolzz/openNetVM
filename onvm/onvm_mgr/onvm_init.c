@@ -60,6 +60,7 @@ struct nf_wakeup_info *nf_wakeup_infos = NULL;
 struct rte_mempool *pktmbuf_pool;
 struct rte_mempool *nf_init_cfg_pool;
 struct rte_mempool *nf_msg_pool;
+//struct rte_mempool *pubsub_msg_pool;
 struct rte_ring *incoming_msg_queue;
 uint16_t **services;
 uint16_t *nf_per_service_count;

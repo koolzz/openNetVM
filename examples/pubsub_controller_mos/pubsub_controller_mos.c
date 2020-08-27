@@ -180,6 +180,7 @@ do_stats_display(struct rte_mbuf *pkt) {
 }
 
 #if 0
+// when using zmalloc and copy data
 static void
 send_event(uint64_t event_id, void *pkt)
 {
@@ -201,6 +202,9 @@ send_event(uint64_t event_id, void *pkt)
         
 }
 #endif
+
+#if 1
+ //when using zmalloc
 static void
 send_event(uint64_t event_id, void *msg)
 {
@@ -225,6 +229,7 @@ send_event(uint64_t event_id, void *msg)
 	}
         
 }
+#endif
 
 static int
 packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
@@ -258,15 +263,30 @@ nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
                 events[data->event->event_id] = data->event;
                 data->done = 1;
         } else if (event_msg->type == SEND){
+                //printf("event_msg->type == SEND\n");
                 //change onvm_event_msg to event_send_msg;
-		struct onvm_event_msg *event_msg_data = (struct onvm_event_msg*)event_msg->data;
+		struct event_send_msg *event_msg_data = (struct event_send_msg*)event_msg->data;
                 /*rte_free((void*)event_msg_data->pkt);
                 rte_free((void*)event_msg_data);
                 rte_free((void*)event_msg);*/
-                //char *data1 = (char*)(event_msg_data->pkt);
-                //printf("event_msg->event_id:%ld, data1:%s\n",event_msg_data->event_id,data1);
-		send_event(event_msg_data->event_id, (void*)event_msg);
-	}
+                /*if(event_msg_data->pkt == NULL)
+                        return;*/
+                /*char *data1 = (char*)(event_msg_data->pkt);
+                printf("%s\n",data1);*/
+                //printf("event_msg_data->event_id:%ld\n",event_msg_data->event_id);
+                //pubsub_msg_pool_put((void*)event_msg_data->pkt);
+                pubsub_msg_pool_put((void*)event_msg_data);
+                pubsub_msg_pool_put((void*)event_msg);
+                //pubsub_event_send_msg_pool_put((void*)event_msg_data);
+                //pubsub_event_msg_pool_put((void*)event_msg);
+                
+		//send_event(event_msg_data->event_id, (void*)event_msg);
+	} else if (event_msg->type == MEMPOOL){
+                pubsub_msg_pool_store(event_msg->data);
+                //event_msg_pool_store(event_msg->data);
+        }else if (event_msg->type == MEMPOOL2){
+                event_send_msg_pool_store(event_msg->data);
+        }
 	else {
                 printf("Recieved unknown event msg type - %d\n", event_msg->type);
         }
@@ -318,7 +338,11 @@ main(int argc, char *argv[]) {
         nf_function_table->pkt_handler = &packet_handler;
         nf_function_table->setup = &nf_setup;
         nf_function_table->msg_handler = &nf_msg_handler;
-
+        
+        /*int retval = lookup_pubsub_msg_pool();
+        if (retval != 0) {
+                rte_exit(EXIT_FAILURE, "Cannot find pubsub message pool: %s\n", rte_strerror(rte_errno));
+        }*/
         if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
                 onvm_nflib_stop(nf_local_ctx);
                 if (arg_offset == ONVM_SIGNAL_TERMINATION) {

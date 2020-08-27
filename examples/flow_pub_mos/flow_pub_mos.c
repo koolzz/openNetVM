@@ -26,7 +26,6 @@
 #include "onvm_pkt_helper.h"
 #include "onvm_event.h"
 #define ONVM
-//#define PUBSUB_CONTROLLER_ID 2
 
 /* Maximum CPU cores */
 #define MAX_CORES 		16
@@ -46,6 +45,7 @@ struct stat_counter stat_cb_cnt, stat_cb_content, stat_cb_flow_content;
 struct stat_counter stat_cb_st_new, stat_cb_st_end, stat_cb_st_establish;
 #endif
 uint64_t alert_cnt = 0;
+//struct rte_mempool *pubsub_msg_pool;
 
 int STATE_FLAG = -1;
 /*----------------------------------------------------------------------------*/
@@ -91,7 +91,6 @@ static void event_init(uint16_t dest_controller)
 	struct event_retrieve_data *data = rte_zmalloc("ev ret data", sizeof(struct event_retrieve_data), 0);
 	msg->data = (void *)data;
 	onvm_nflib_send_msg_to_nf(dest_controller, (void*)msg);
-	//printf("event_init wait for the data->done++++++++++++\n");
 	while (data->done != 1)
 		sleep(1);
 
@@ -142,17 +141,6 @@ cb_creation(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 	}
 	#endif
 	 
-	/* Send msg to controller*/
-	//char *str1 = "TCP SYN";
-	#if 0
-	char str1[25];
-	sprintf(str1,"%d",testcount);
-	testcount++;
-	printf("str1:%s----------\n",str1);
-	char *msg_sent = rte_zmalloc("ev msg", sizeof(char)*25, 0);	
-	rte_memcpy(msg_sent,str1,strlen(str1));
-	send_event_data(FLOW_TCP_SYN_EVENT_ID, destination_id, (void*)msg_sent);
-	#endif
 	//char *msg_sent = NULL;
 	//printf("Send SYN notification testcount:%d\n",++testcount);	
 	send_event_data(FLOW_TCP_SYN_EVENT_ID, destination_id, NULL);
@@ -183,21 +171,6 @@ cb_destroy(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 	UpdateStatCounter(&stat_cb_destroy, rdtscll() - start_tsc);
 	#endif	
 
-	//struct pkt_info *pi = NULL;
-	//char *msg_sent = rte_zmalloc("ev msg", sizeof(char), 0);
-	//char *msg_sent = NULL;
-	//char *str1 = "TCP END";
-
-	#if 0
-	char str1[25];
-	sprintf(str1,"%d",testcount);
-	testcount++;
-	printf("str1:%s----------\n",str1);
-	char *msg_sent = rte_zmalloc("ev msg", sizeof(char), 0);	
-	rte_memcpy(msg_sent,str1,strlen(str1));
-	//send_event_data(FLOW_TCP_END_EVENT_ID, destination_id, (void*)msg_sent);
-	#endif
-	//printf("Send TCP End notification testcount:%d\n",++testcount);	
 	send_event_data(FLOW_TCP_END_EVENT_ID, destination_id, NULL);
 
 }
@@ -339,7 +312,6 @@ cb_printstat(mctx_t mctx, int sock, int side,
 static void
 cb_pkt_content(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 {
-	//printf("=========SND ===cb_pkt_content2++++FLAG:%d===================\n",STATE_FLAG);
 	#ifdef TIME_STAT
 	unsigned long long start_tsc = rdtscll();
 	#endif	
@@ -364,37 +336,24 @@ cb_pkt_content(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *a
 	#endif	
 
 	if(STATE_FLAG == TCP_ESTABLISHED)
-	{
-		// /printf("len: %ld\n%s\n", strlen((char*)pi.payload), pi.payload);
-
-		//test
+	{		
 		#if 0
-		//char *str1 = "TCP ESTABLISHED";
-		char str1[25];
-		//itoa(testcount,str1,10);
-		sprintf(str1,"%d",testcount);
-		testcount++;
-		printf("str1:%s----------\n",str1);
-		char *pkt_sent = rte_zmalloc("ev msg", sizeof(char), 0);
-		rte_memcpy(pkt_sent,str1,strlen(str1));
-		#endif		
-		
-		#if 1
-		char *pkt_sent = NULL;
+		//char *pkt_sent = NULL;
 		if(pi.payload != NULL)
 		{
-			pkt_sent = rte_zmalloc("ev msg", sizeof(char) * strlen((char*)pi.payload), 0);
-			//char *pkt_sent = rte_malloc("ev msg", sizeof(char), strlen((char*)pi.payload));
+			/*pkt_sent = rte_zmalloc("ev msg", sizeof(char) * strlen((char*)pi.payload), 0);
 			rte_memcpy(pkt_sent, (char*)pi.payload, strlen((char*)pi.payload));
-			send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, (void*)pkt_sent);
+			send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, (void*)pkt_sent);*/
+			send_event_data_msg(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, pi.payload);
 		}
 		else{
 			//printf("establish pkt is null\n");
 			send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, NULL);
 		}
-		#endif
-		//printf("Send TCP Establish notification:testcount:%d\n",++testcount);
 		
+		#endif
+		//send_event_data_msg(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, pi.payload);
+		send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, NULL);
 		
 	}
 }
@@ -556,6 +515,30 @@ main(int argc, char **argv)
 	mtcp_register_signal(SIGINT, sigint_handler);
 
 #ifdef ONVM
+	#if 0
+	int retval = init_pubsub_event_msg_pool();
+	if (retval != 0) {
+        rte_exit(EXIT_FAILURE, "Cannot create pubsub event message pool: %s\n", rte_strerror(rte_errno));
+    }
+	retval = init_pubsub_event_send_msg_pool();
+	if (retval != 0) {
+        rte_exit(EXIT_FAILURE, "Cannot create pubsub event send message pool: %s\n", rte_strerror(rte_errno));
+    }
+	retval = init_pubsub_msg_pool();
+    if (retval != 0) {
+                rte_exit(EXIT_FAILURE, "Cannot find pubsub message pool: %s\n", rte_strerror(rte_errno));
+    }
+	#endif
+	int retval = init_pubsub_msg_pool();
+    if (retval != 0) {
+        rte_exit(EXIT_FAILURE, "Cannot create pubsub message pool: %s\n", rte_strerror(rte_errno));
+    }
+	//retval = lookup_pubsub_msg_pool();
+	send_event_mempool(destination_id);
+	//send_event_msg_pool(destination_id);
+	//send_event_send_msg_pool(destination_id);
+
+	
 	printf("ONVM is enabled!\n\n");
 	if (!(g_mctx[g_run_core] = mtcp_create_context(g_run_core))) {
 		fprintf(stderr, "Failed to craete mtcp context.\n");
@@ -580,10 +563,13 @@ main(int argc, char **argv)
 	}
 
 	/* wait until mOS finishes */
+	free_pubsub_msg_pool();
+	
 	for (i = 0; i < g_max_cores; i++)
 		mtcp_app_join(g_mctx[i]);
 #endif
 
+	
 	mtcp_destroy();
 	return 0;
 }
