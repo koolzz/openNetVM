@@ -324,7 +324,7 @@ cb_pkt_content(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *a
 		exit(-1); /* no point in proceeding if the timer is broken */
 	}
 
-	//printf("len: %ld\n%s\n", strlen((char*)pi.payload), pi.payload);
+	//printf("len: %d\n%s\n", pi.payloadlen, pi.payload);
 	ret = strstr((char *)pi.payload, pattern); 
 	if (ret != NULL) {
 		//printf("Find pattern: %s, alert: %d\n", ret, alert_cnt);
@@ -337,23 +337,23 @@ cb_pkt_content(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *a
 
 	if(STATE_FLAG == TCP_ESTABLISHED)
 	{		
-		#if 0
+		#if 1
 		//char *pkt_sent = NULL;
-		if(pi.payload != NULL)
+		if((strlen((char*)pi.payload) != 0) && (pi.payload != NULL))
 		{
 			/*pkt_sent = rte_zmalloc("ev msg", sizeof(char) * strlen((char*)pi.payload), 0);
 			rte_memcpy(pkt_sent, (char*)pi.payload, strlen((char*)pi.payload));
 			send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, (void*)pkt_sent);*/
-			send_event_data_msg(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, pi.payload);
+			//printf("send_event_data_msg++++++++++++1\n");
+			send_event_data_msg(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, (void*)pi.payload);
+			//printf("send_event_data_msg++++++++++++2\n");
 		}
 		else{
 			//printf("establish pkt is null\n");
 			send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, NULL);
 		}
-		
 		#endif
-		//send_event_data_msg(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, pi.payload);
-		send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, NULL);
+		//send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, NULL);
 		
 	}
 }

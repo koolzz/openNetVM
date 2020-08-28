@@ -738,13 +738,12 @@ onvm_nflib_send_msgs_to_nf(uint16_t dest, struct msgs_buffer *msgs_buffer) {
         }
 
         ret = rte_ring_enqueue_bulk(nfs[dest].msg_q, (void**)msgs, count, NULL);
-        if(ret == 0){
+        while(ret == 0){
                 RTE_LOG(INFO, APP, "resend msgs to nf++++++++1\n");
-                rte_mempool_put_bulk(nf_msg_pool, (void**)msgs, count);
+                ret = rte_ring_enqueue_bulk(nfs[dest].msg_q, (void**)msgs, count, NULL);
+                //rte_mempool_put_bulk(nf_msg_pool, (void**)msgs, count);
         }
-        else{
-                msgs_buffer->count = 0;
-        }
+        msgs_buffer->count = 0;
         return ret;
 
 }
@@ -756,10 +755,7 @@ onvm_nflib_send_a_msg_to_nf(uint16_t dest, void *msg_data) {
         msgs_buffer->data[msgs_buffer->count] = msg_data;
         msgs_buffer->count ++;
 
-        //printf("onvm_nflib_send_a_msg ret=%d, (ret>=0):%d\n",ret, ret>=0);
-
-        //printf("msgs_buffer->count:%d\n",msgs_buffer->count);
-        if(likely(msgs_buffer->count < SEND_MSG_SIZE)){
+        if(likely(msgs_buffer->count < SEND_MSG_SIZE-1)){
                 return 0;
         }
         else

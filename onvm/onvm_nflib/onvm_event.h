@@ -558,17 +558,24 @@ int send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt){
 }
 #endif
 
-#if 1
+#if 1 
 void send_event_data_msg(uint64_t event_id, uint16_t dest_id, void *pkt){
         int ret;
-        char *pkt_sent;
-        ret = rte_mempool_get(pubsub_msg_pool, (void**)&pkt_sent);
+        void *pkt_sent;
+        //char pkt_tmp[1500];
+        //memset(pkt_tmp, 0, 1500);
+
+        ret = rte_mempool_get(pubsub_msg_pool, &pkt_sent);
         if (ret != 0) {
                 RTE_LOG(INFO, APP, "Unable to allocate event_msg msg from pool when trying to send msg to nf\n");
                 return;
         }
-        rte_memcpy(pkt_sent, (char*)pkt, strlen(pkt));
-        send_event_data(event_id, dest_id, pkt_sent);
+        
+        printf("send_event_data_msg++++++++++++++1\n");
+        rte_strlcpy((char*)pkt_sent, (char*)pkt, strlen((char*)pkt));
+        printf("send_event_data_msg++++++++++++++2\n");
+        
+        send_event_data(event_id, dest_id, (void*)pkt_sent);
         
 }
 //for pubsub_msg_pool
@@ -578,7 +585,6 @@ int send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt)
         struct event_msg *msg;
         
         ret = rte_mempool_get(pubsub_msg_pool, (void**)&msg);
-        //ret = rte_mempool_get(event_msg_pool, (void**)&msg);
         if (ret != 0) {
                 RTE_LOG(INFO, APP, "Unable to allocate pubsub_msg_pool from pool when trying to send msg to nf\n");
                 return ret;
@@ -586,7 +592,6 @@ int send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt)
 
         struct event_send_msg *msg_event;
         ret = rte_mempool_get(pubsub_msg_pool, (void**)&msg_event);
-        //ret = rte_mempool_get(event_send_msg_pool, (void**)&msg_event);
         if (ret != 0) {
                 RTE_LOG(INFO, APP, "Unable to allocate pubsub_msg_pool from pool when trying to send msg to nf\n");
                 return ret;
@@ -597,6 +602,7 @@ int send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt)
 	
         msg->type = SEND;
         msg->data = (void *)msg_event;
+        printf("send_event_data+++++++++++++++will send a msg to nf\n");
 
         #if 1
         ret = onvm_nflib_send_a_msg_to_nf(dest_id, (void*)msg);
