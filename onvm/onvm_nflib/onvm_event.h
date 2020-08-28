@@ -560,20 +560,19 @@ int send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt){
 
 #if 1 
 void send_event_data_msg(uint64_t event_id, uint16_t dest_id, void *pkt){
-        int ret;
-        void *pkt_sent;
+        char *pkt_sent;
+        //char pkt_sent[1500]={0};
         //char pkt_tmp[1500];
         //memset(pkt_tmp, 0, 1500);
 
-        ret = rte_mempool_get(pubsub_msg_pool, &pkt_sent);
-        if (ret != 0) {
+        if(rte_mempool_get(pubsub_msg_pool, (void**)&pkt_sent) < 0){
                 RTE_LOG(INFO, APP, "Unable to allocate event_msg msg from pool when trying to send msg to nf\n");
                 return;
         }
-        
-        printf("send_event_data_msg++++++++++++++1\n");
-        rte_strlcpy((char*)pkt_sent, (char*)pkt, strlen((char*)pkt));
-        printf("send_event_data_msg++++++++++++++2\n");
+
+        //printf("send_event_data_msg++++++++++++++1\n");
+        rte_strlcpy(pkt_sent, (char*)pkt, strlen((char*)pkt));
+        //printf("send_event_data_msg++++++++++++++2\n");
         
         send_event_data(event_id, dest_id, (void*)pkt_sent);
         
@@ -602,9 +601,9 @@ int send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt)
 	
         msg->type = SEND;
         msg->data = (void *)msg_event;
-        printf("send_event_data+++++++++++++++will send a msg to nf\n");
+        //printf("send_event_data+++++++++++++++will send a msg to nf\n");
 
-        #if 1
+        #if 0
         ret = onvm_nflib_send_a_msg_to_nf(dest_id, (void*)msg);
         while (ret != 0)
         {
@@ -613,7 +612,7 @@ int send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt)
                 //exit(-1);
         }
         #endif
-        #if 0
+        #if 1
         //send msgs one by one
         ret = onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
         while (ret != 0)

@@ -119,6 +119,7 @@ find_connection(int cpu, int sock)
 static void
 cb_creation(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 {
+	//printf("+++++++++++++++++++cb_creation++++++++++++++\n");
 	STATE_FLAG = TCP_LISTEN;
 	#if 1
 	#ifdef TIME_STAT
@@ -156,6 +157,7 @@ cb_creation(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 static void
 cb_destroy(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 {
+	//printf("+++++++++++++++++cb_destroy+++++++++++++++\n");
 	STATE_FLAG = TCP_CLOSED;
 	#ifdef TIME_STAT
 	unsigned long long start_tsc = rdtscll();
@@ -180,6 +182,7 @@ cb_destroy(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 static void
 cb_st_chg(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 {
+	//printf("++++++++++++++++==st_chg++++++++++++++\n");
 	#ifdef TIME_STAT
 	unsigned long long start_tsc = rdtscll();
 	#endif	
@@ -312,24 +315,19 @@ cb_printstat(mctx_t mctx, int sock, int side,
 static void
 cb_pkt_content(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 {
+	//printf("+++++++++++++++++++cb_pkt_content+++++++++++\n");
 	#ifdef TIME_STAT
 	unsigned long long start_tsc = rdtscll();
 	#endif	
-	struct pkt_info pi;
-	const char pattern[10] = "123";
-	char *ret = NULL;
+	//struct pkt_info pi;
+	struct pkt_info *pi = rte_zmalloc("ev msg", sizeof(struct pkt_info), 0);
 
-	if (mtcp_getlastpkt(mctx, sock, side, &pi) < 0) {
+	if (mtcp_getlastpkt(mctx, sock, side, pi) < 0) {
 		fprintf(stderr, "Failed to get packet context\n");
 		exit(-1); /* no point in proceeding if the timer is broken */
 	}
 
 	//printf("len: %d\n%s\n", pi.payloadlen, pi.payload);
-	ret = strstr((char *)pi.payload, pattern); 
-	if (ret != NULL) {
-		//printf("Find pattern: %s, alert: %d\n", ret, alert_cnt);
-		alert_cnt++;
-	}
 
 	#ifdef TIME_STAT
 	UpdateStatCounter(&stat_cb_content, rdtscll() - start_tsc);	
@@ -337,7 +335,7 @@ cb_pkt_content(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *a
 
 	if(STATE_FLAG == TCP_ESTABLISHED)
 	{		
-		#if 1
+		#if 0
 		//char *pkt_sent = NULL;
 		if((strlen((char*)pi.payload) != 0) && (pi.payload != NULL))
 		{
@@ -353,7 +351,7 @@ cb_pkt_content(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *a
 			send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, NULL);
 		}
 		#endif
-		//send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, NULL);
+		send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, (void*)pi);
 		
 	}
 }

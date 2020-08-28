@@ -266,17 +266,18 @@ nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
                 //printf("event_msg->type == SEND\n");
                 //change onvm_event_msg to event_send_msg;
 		struct event_send_msg *event_msg_data = (struct event_send_msg*)event_msg->data;
-                //rte_free((void*)event_msg_data->pkt);
-                /*rte_free((void*)event_msg_data);
+                /*rte_free((void*)event_msg_data->pkt);
+                rte_free((void*)event_msg_data);
                 rte_free((void*)event_msg);*/
                 /*if(event_msg_data->pkt != NULL){
                         char *data1 = (char*)(event_msg_data->pkt);
                         printf("%s\n",data1);
                 }*/
                 //printf("event_msg_data->event_id:%ld\n",event_msg_data->event_id);
-                if(event_msg_data->pkt != NULL){
-                        pubsub_msg_pool_put((void*)event_msg_data->pkt);
-                }
+                //if(event_msg_data->pkt != NULL){
+                //        pubsub_msg_pool_put((void*)event_msg_data->pkt);
+                //}
+                rte_free((void*)event_msg_data->pkt);
                 pubsub_msg_pool_put((void*)event_msg_data);
                 pubsub_msg_pool_put((void*)event_msg);
 		//send_event(event_msg_data->event_id, (void*)event_msg);
