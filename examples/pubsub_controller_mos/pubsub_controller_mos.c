@@ -48,15 +48,35 @@
 #include <string.h>
 #include <sys/queue.h>
 #include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <time.h>
+#include <sys/time.h>
+#include <asm/byteorder.h>
+#include <assert.h>
+#include <signal.h>
+
+#include <rte_ether.h>
 #include <rte_common.h>
 #include <rte_ip.h>
 #include <rte_mbuf.h>
 #include <rte_memcpy.h>
 
+
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
 #include "onvm_event.h"
+
+#include "/users/weicuidi/onvm-mos/core/src/include/mos_api.h"
+#include "/users/weicuidi/onvm-mos/core/src/include/cpu.h"
+
+#include "onvm_flow_table.h"
 
 #define NF_TAG "controller_mos"
 
@@ -202,6 +222,47 @@ send_event(uint64_t event_id, void *pkt)
         
 }
 #endif
+/*----------------------------------------------------------------------------*/
+//#ifndef ETH_P_IP
+//#define ETH_P_IP 0x0800 /* IPv4 */
+//#endif
+#if 1
+void
+PrintBuff(char *buf)
+{
+	//struct rte_ether_hdr *ethh;
+        struct ethhdr *ethh;
+	struct iphdr *iph;
+	//struct udphdr *udph;
+	//struct tcphdr *tcph;
+	uint8_t *t;
+	printf("PrintPacket+++++++++++++++++++++++++++++++\n");
+
+	ethh = (struct ethhdr *)buf;
+	if (ntohs(ethh->h_proto) != ETH_P_IP) {
+		printf("PrintPacket ETH_P_IP+++++++++++++\n");
+	}
+        #if 1
+	iph = (struct iphdr *)(ethh + 1);
+	//udph = (struct udphdr *)((uint32_t *)iph + iph->ihl);
+	//tcph = (struct tcphdr *)((uint32_t *)iph + iph->ihl);
+
+	t = (uint8_t *)&iph->saddr;
+	char ipsrc[128];
+	sprintf(ipsrc, "%u.%u.%u.%u", t[0], t[1], t[2], t[3]);
+	printf("IP src:%s\n",ipsrc);
+	if (iph->protocol == IPPROTO_TCP || iph->protocol == IPPROTO_UDP){
+		printf("TCP or UDP\n");
+	}
+
+	t = (uint8_t *)&iph->daddr;
+	char ipdst[128];
+	sprintf(ipdst, "%u.%u.%u.%u", t[0], t[1], t[2], t[3]);
+	printf("IP dst:%s\n",ipdst);
+        #endif
+	printf("PrintPacket+++++++++++++++++++end\n");
+}
+#endif
 
 #if 1
  //when using zmalloc
@@ -221,10 +282,12 @@ send_event(uint64_t event_id, void *msg)
 	for (i = 0; i < event->subscriber_cnt; i++) {
                 //printf("event->subscribers[i]->id:%d\n",event->subscribers[i]->id);
 		nf_id = event->subscribers[i]->id;
-		ret = onvm_nflib_send_msg_to_nf(nf_id, msg);
+		//ret = onvm_nflib_send_a_msg_to_nf(nf_id, msg);
+                ret = onvm_nflib_send_msg_to_nf(nf_id, msg);
                 while (ret != 0)
                 {
-                       ret = onvm_nflib_send_msg_to_nf(nf_id, msg);
+                        ret = onvm_nflib_send_msg_to_nf(nf_id, msg);
+                       //ret = onvm_nflib_send_a_msg_to_nf(nf_id, msg);
                 }
 	}
         
@@ -263,6 +326,7 @@ nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
                 events[data->event->event_id] = data->event;
                 data->done = 1;
         } else if (event_msg->type == SEND){
+                #if 0
                 //printf("event_msg->type == SEND\n");
                 //change onvm_event_msg to event_send_msg;
 		struct event_send_msg *event_msg_data = (struct event_send_msg*)event_msg->data;
@@ -277,15 +341,27 @@ nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
                 //if(event_msg_data->pkt != NULL){
                 //        pubsub_msg_pool_put((void*)event_msg_data->pkt);
                 //}
-                rte_free((void*)event_msg_data->pkt);
+                /*if(event_msg_data->pkt != NULL)
+                {
+                        printf("1strlen((char*)event_msg_data->pkt):%ld\n",strlen((char*)event_msg_data->pkt));
+                        
+                }*/
+                //PrintBuff((char*)event_msg_data->pkt);
+                //rte_free((void*)event_msg_data->pkt);
                 pubsub_msg_pool_put((void*)event_msg_data);
                 pubsub_msg_pool_put((void*)event_msg);
-		//send_event(event_msg_data->event_id, (void*)event_msg);
+                #endif
+                
+                struct event_send_msg *event_msg_data = (struct event_send_msg*)event_msg->data;
+                PrintBuff((char*)event_msg_data->pkt);
+		send_event(event_msg_data->event_id, (void*)event_msg);
 	} else if (event_msg->type == MEMPOOL){
                 pubsub_msg_pool_store(event_msg->data);
                 //event_msg_pool_store(event_msg->data);
-        }else if (event_msg->type == MEMPOOL2){
-                event_send_msg_pool_store(event_msg->data);
+        }else if(event_msg->type == GETMEMPOOL){
+                struct event_send_msg *event_msg_data = (struct event_send_msg*)event_msg->data;
+                printf("event_msg_data->pkt:%s\n",event_msg_data->pkt);
+                send_event_mempool(destination_id);
         }
 	else {
                 printf("Recieved unknown event msg type - %d\n", event_msg->type);

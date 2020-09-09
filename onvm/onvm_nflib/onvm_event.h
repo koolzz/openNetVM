@@ -59,6 +59,7 @@
 #define MEMPOOL 5
 #define MEMPOOL1 6
 #define MEMPOOL2 7
+#define GETMEMPOOL 8
 
 uint64_t EVENT_BITMASK;
 struct rte_mempool *pubsub_msg_pool;
@@ -628,6 +629,13 @@ void send_event_mempool(uint16_t dest_id){
         struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
         msg->type = MEMPOOL;
         msg->data = (void*)pubsub_msg_pool;
+        onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
+}
+void get_event_mempool(uint16_t dest_id, uint16_t *src_id){
+        printf("require_event_mempool+++++++++\n");
+        struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
+        msg->type = GETMEMPOOL;
+        msg->data = (void*)&src_id;
         onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
 }
 void send_event_msg_pool(uint16_t dest_id){

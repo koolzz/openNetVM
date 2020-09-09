@@ -70,6 +70,42 @@ int destination_id;
 
 //int testcount = 0;
 /*----------------------------------------------------------------------------*/
+#if 0
+void
+PrintBuff(char *buf)
+{
+	struct ethhdr *ethh;
+	struct iphdr *iph;
+	//struct udphdr *udph;
+	//struct tcphdr *tcph;
+	uint8_t *t;
+	printf("PrintPacket+++++++++++++++++++++++++++++++\n");
+
+	ethh = (struct ethhdr *)buf;
+	if (ntohs(ethh->h_proto) != ETH_P_IP) {
+		printf("PrintPacket ETH_P_IP+++++++++++++\n");
+	}
+
+	iph = (struct iphdr *)(ethh + 1);
+	//udph = (struct udphdr *)((uint32_t *)iph + iph->ihl);
+	//tcph = (struct tcphdr *)((uint32_t *)iph + iph->ihl);
+
+	t = (uint8_t *)&iph->saddr;
+	char ipsrc[128];
+	sprintf(ipsrc, "%u.%u.%u.%u", t[0], t[1], t[2], t[3]);
+	printf("IP src:%s\n",ipsrc);
+	if (iph->protocol == IPPROTO_TCP || iph->protocol == IPPROTO_UDP){
+		printf("TCP or UDP\n");
+	}
+
+	t = (uint8_t *)&iph->daddr;
+	char ipdst[128];
+	sprintf(ipdst, "%u.%u.%u.%u", t[0], t[1], t[2], t[3]);
+	printf("IP dst:%s\n",ipdst);
+	printf("PrintPacket+++++++++++++++++++end\n");
+}
+#endif
+/*----------------------------------------------------------------------------*/
 /* Signal handler */
 static void
 sigint_handler(int signum)
@@ -144,7 +180,7 @@ cb_creation(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 	 
 	//char *msg_sent = NULL;
 	//printf("Send SYN notification testcount:%d\n",++testcount);	
-	send_event_data(FLOW_TCP_SYN_EVENT_ID, destination_id, NULL);
+	//send_event_data(FLOW_TCP_SYN_EVENT_ID, destination_id, NULL);
  
 	/* Insert the structure to the queue */
 	TAILQ_INSERT_TAIL(&g_sockq[mctx->cpu], c, link);
@@ -173,7 +209,7 @@ cb_destroy(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 	UpdateStatCounter(&stat_cb_destroy, rdtscll() - start_tsc);
 	#endif	
 
-	send_event_data(FLOW_TCP_END_EVENT_ID, destination_id, NULL);
+	//send_event_data(FLOW_TCP_END_EVENT_ID, destination_id, NULL);
 
 }
 /*----------------------------------------------------------------------------*/
@@ -320,12 +356,19 @@ cb_pkt_content(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *a
 	unsigned long long start_tsc = rdtscll();
 	#endif	
 	//struct pkt_info pi;
-	struct pkt_info *pi = rte_zmalloc("ev msg", sizeof(struct pkt_info), 0);
+	//struct pkt_info *pi = rte_zmalloc("ev msg", sizeof(struct pkt_info), 0);
+	struct pkt_ctx *pi;
+	if(mtcp_getlastbuf(mctx, sock, side, &pi) < 0){
+		fprintf(stderr, "Failed to get packet context\n");
+		exit(-1);
+	}
 
-	if (mtcp_getlastpkt(mctx, sock, side, pi) < 0) {
+	#if 0
+	if (mtcp_getlastpkt(mctx, sock, side, &pi) < 0) {
 		fprintf(stderr, "Failed to get packet context\n");
 		exit(-1); /* no point in proceeding if the timer is broken */
 	}
+	#endif
 
 	//printf("len: %d\n%s\n", pi.payloadlen, pi.payload);
 
@@ -351,11 +394,22 @@ cb_pkt_content(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *a
 			send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, NULL);
 		}
 		#endif
-		send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, (void*)pi);
-		
+		//struct rte_mbuf *dpdk_buff = (struct rte_mbuf *)((pi->p).pkt_buf);
+		//PrintBuff((char*)(pi->p).pkt_buf);
+		//printf("strlen(pi.p->pkt_buf):%ld++++++++++++++\n",strlen((char*)((pi->p).pkt_buf)));
+		//printf("%d\n",dpdk_buff->pkt_len);
+		send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
+	}
+	else if(STATE_FLAG == TCP_LISTEN){
+		//PrintBuff((char*)(pi->p).pkt_buf);
+		send_event_data(FLOW_TCP_SYN_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
+	}else if(STATE_FLAG == TCP_CLOSED){
+		//PrintBuff((char*)(pi->p).pkt_buf);
+		send_event_data(FLOW_TCP_END_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
 	}
 }
 #endif
+
 /*----------------------------------------------------------------------------*/
 /* Register required callbacks */
 static void
@@ -396,12 +450,13 @@ RegisterCallbacks(mctx_t mctx, int sock, event_t ev_new_syn)
 		fprintf(stderr, "Failed to register cb_st_chg()\n");
 		exit(-1); /* no point in proceeding if callback registration fails */
 	}	
-	
+	#if 0
 	if (mtcp_register_callback(mctx, sock, MOS_ON_TCP_STATE_CHANGE,
 				   MOS_HK_RCV, cb_st_chg)) {
 		fprintf(stderr, "Failed to register cb_st_chg()\n");
 		exit(-1); /* no point in proceeding if callback registration fails */
 	}
+	#endif
 	#if 1
 	if (mtcp_register_callback(mctx, sock, MOS_ON_PKT_IN,
 				   MOS_HK_SND, cb_pkt_content)) {

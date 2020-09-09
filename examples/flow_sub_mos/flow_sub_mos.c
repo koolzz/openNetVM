@@ -59,13 +59,17 @@
 #include "onvm_event.h"
 
 #define NF_TAG "flow_sub_mos"
+#include "/users/weicuidi/onvm-mos/core/src/include/mos_api.h"
+#include "/users/weicuidi/onvm-mos/core/src/include/cpu.h"
 #define TBL_SIZE 100
 #define EXPIRE_TIME 5
+#define Controller_id 2
 
 /* number of package between each print */
 static uint32_t print_delay = 1000000;
 
 static uint32_t destination;
+static uint32_t local_id;
 
 //static struct event_retrieve_data *event_data = NULL;
 /*Struct that holds all NF state information */
@@ -91,6 +95,7 @@ struct flow_stats {
         int is_active;
 };
 
+#if 0
 struct pkt_info {
 	uint32_t      cur_ts;    /**< packet receiving time (read-only:ro) */
 	int8_t        in_ifidx;  /**< input interface (ro) */
@@ -112,6 +117,7 @@ struct pkt_info {
 	struct tcphdr *tcph;
 	uint8_t       *payload;
 };
+#endif
 
 struct state_info *state_info;
 void nf_setup(struct onvm_nf_local_ctx *nf_local_ctx);
@@ -206,6 +212,44 @@ do_stats_display(struct rte_mbuf *pkt) {
         }
 }
 
+#if 1
+void
+PrintBuff(char *buf)
+{
+	//struct rte_ether_hdr *ethh;
+        struct ethhdr *ethh;
+	struct iphdr *iph;
+	//struct udphdr *udph;
+	//struct tcphdr *tcph;
+	uint8_t *t;
+	printf("PrintPacket+++++++++++++++++++++++++++++++\n");
+
+	ethh = (struct ethhdr *)buf;
+	if (ntohs(ethh->h_proto) != ETH_P_IP) {
+		printf("PrintPacket ETH_P_IP+++++++++++++\n");
+	}
+        #if 1
+	iph = (struct iphdr *)(ethh + 1);
+	//udph = (struct udphdr *)((uint32_t *)iph + iph->ihl);
+	//tcph = (struct tcphdr *)((uint32_t *)iph + iph->ihl);
+
+	t = (uint8_t *)&iph->saddr;
+	char ipsrc[128];
+	sprintf(ipsrc, "%u.%u.%u.%u", t[0], t[1], t[2], t[3]);
+	printf("IP src:%s\n",ipsrc);
+	if (iph->protocol == IPPROTO_TCP || iph->protocol == IPPROTO_UDP){
+		printf("TCP or UDP\n");
+	}
+
+	t = (uint8_t *)&iph->daddr;
+	char ipdst[128];
+	sprintf(ipdst, "%u.%u.%u.%u", t[0], t[1], t[2], t[3]);
+	printf("IP dst:%s\n",ipdst);
+        #endif
+	printf("PrintPacket+++++++++++++++++++end\n");
+}
+#endif
+
 void
 nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
 	printf("Hi boi %d\n", nf_local_ctx->nf->instance_id);
@@ -222,21 +266,17 @@ nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
 	subscribe_nf_noflow(get_event(data->root, FLOW_TCP_SYN_EVENT_ID), 3);
 	subscribe_nf_noflow(get_event(data->root, FLOW_TCP_ESTABLISH_EVENT_ID), 3);
 	subscribe_nf_noflow(get_event(data->root, FLOW_TCP_END_EVENT_ID), 3);
+        get_event_mempool(Controller_id,&local_id);
 }
 
-//int pktCount = 0;
-void
-msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx){
-	//printf("NF %d recieved msg\n", nf_local_ctx->nf->instance_id);
-	struct event_msg *msg1 = (struct event_msg *)msg_data;
-	struct onvm_event_msg *msg = (struct onvm_event_msg *) msg1->data;
-        
-	if(msg->event_id==FLOW_TCP_SYN_EVENT_ID)
+void 
+event_inform(struct event_send_msg *msg){
+        if(msg->event_id==FLOW_TCP_SYN_EVENT_ID)
 	{
-		//printf("************** FLOW_TCP_SYN_EVENT_ID  pktCount:%d***********\n",++pktCount);
+		printf("************** FLOW_TCP_SYN_EVENT_ID  pktCount***********\n");
 	}
 	else if(msg->event_id==FLOW_TCP_ESTABLISH_EVENT_ID){
-	        //printf("************** FLOW_TCP_ESTABLISH_EVENT_ID pktCount:%d***********\n",++pktCount);
+	        printf("************** FLOW_TCP_ESTABLISH_EVENT_ID pktCount***********\n");
                 /*char *data1 = (char*)msg->pkt;
                 if(data1 != NULL){
                         printf("%s\n",data1);
@@ -244,11 +284,30 @@ msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx){
                 
 	}
 	else if(msg->event_id==FLOW_TCP_END_EVENT_ID){
-		//printf("************** FLOW_TCP_END_EVENT_ID  pktCount:%d***********\n",++pktCount);
+		printf("************** FLOW_TCP_END_EVENT_ID  pktCount***********\n");
 	}
-        rte_free((void*)msg->pkt);
-        rte_free((void*)msg);
-        rte_free((void*)msg1);
+        //rte_free((void*)msg->pkt);
+        PrintBuff((char*)msg->pkt);
+        pubsub_msg_pool_put((void*)msg);
+        
+}
+
+//int pktCount = 0;
+void
+msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx){
+	//printf("NF %d recieved msg\n", nf_local_ctx->nf->instance_id);
+	struct event_msg *msg1 = (struct event_msg *)msg_data;
+	struct event_send_msg *msg = (struct event_send_msg *) msg1->data;
+        
+        if (msg1->type == SEND){
+                event_inform(msg);
+                pubsub_msg_pool_put((void*)msg1);
+        }else if (msg1->type == MEMPOOL){
+                pubsub_msg_pool_store(msg1->data);
+        }else {
+                printf("Recieved unknown event msg type - %d\n", msg1->type);
+        }
+
 }
 
 static int
@@ -276,6 +335,10 @@ main(int argc, char *argv[]) {
         int arg_offset;
 
         const char *progname = argv[0];
+        local_id = strtoul(argv[4], NULL, 10);
+        for(int i=0; i<argc; i++){
+                printf("%d:%s\n",i,argv[i]);
+        }
 
         nf_local_ctx = onvm_nflib_init_nf_local_ctx();
         onvm_nflib_start_signal_handler(nf_local_ctx, NULL);
@@ -294,7 +357,7 @@ main(int argc, char *argv[]) {
                         rte_exit(EXIT_FAILURE, "Failed ONVM init\n");
                 }
         }
-
+        
         argc -= arg_offset;
         argv += arg_offset;
 
