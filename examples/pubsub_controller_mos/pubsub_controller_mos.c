@@ -107,6 +107,7 @@ struct event_tree_node **events;
 static uint32_t print_delay = 1000000;
 
 static uint32_t destination;
+static uint32_t src_nf_id;
 
 void nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx);
 static void send_event(uint64_t event_id, void *msg);
@@ -226,7 +227,7 @@ send_event(uint64_t event_id, void *pkt)
 //#ifndef ETH_P_IP
 //#define ETH_P_IP 0x0800 /* IPv4 */
 //#endif
-#if 1
+#if 0
 void
 PrintBuff(char *buf)
 {
@@ -353,15 +354,16 @@ nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
                 #endif
                 
                 struct event_send_msg *event_msg_data = (struct event_send_msg*)event_msg->data;
-                PrintBuff((char*)event_msg_data->pkt);
+                //PrintBuff((char*)event_msg_data->pkt);
 		send_event(event_msg_data->event_id, (void*)event_msg);
 	} else if (event_msg->type == MEMPOOL){
                 pubsub_msg_pool_store(event_msg->data);
                 //event_msg_pool_store(event_msg->data);
         }else if(event_msg->type == GETMEMPOOL){
-                struct event_send_msg *event_msg_data = (struct event_send_msg*)event_msg->data;
-                printf("event_msg_data->pkt:%s\n",event_msg_data->pkt);
-                send_event_mempool(destination_id);
+                uint32_t *data1 = (uint32_t *)event_msg->data;
+                //printf("data1:%d(should be submos nf_id)\n",*data1);
+                src_nf_id = *data1;
+                send_event_mempool(src_nf_id);
         }
 	else {
                 printf("Recieved unknown event msg type - %d\n", event_msg->type);

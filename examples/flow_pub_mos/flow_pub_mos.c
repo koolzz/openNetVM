@@ -151,11 +151,11 @@ find_connection(int cpu, int sock)
 }
 /*----------------------------------------------------------------------------*/
 /* Create connection structure for new connection */
-#if 1
+#if 0
 static void
 cb_creation(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 {
-	//printf("+++++++++++++++++++cb_creation++++++++++++++\n");
+	printf("+++++++++++++++++++cb_creation++++++++++++++\n");
 	STATE_FLAG = TCP_LISTEN;
 	#if 1
 	#ifdef TIME_STAT
@@ -188,12 +188,52 @@ cb_creation(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 	UpdateStatCounter(&stat_cb_creation, rdtscll() - start_tsc);
 	#endif	
 }
+#else
+
+static void
+cb_creation(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
+{
+	printf("+++++++++++++++++++cb_creation++++++++++++++\n");
+	STATE_FLAG = TCP_LISTEN;
+	#if 1	
+	socklen_t addrslen = sizeof(struct sockaddr) * 2;
+	struct connection *c;
+	c = calloc(sizeof(struct connection), 1);
+	if (!c)
+		return;
+
+	/* Fill values of the connection structure */
+	c->sock = sock;
+	if (mtcp_getpeername(mctx, c->sock, (void *)c->addrs, &addrslen,
+						 MOS_SIDE_CLI) < 0) {
+		perror("mtcp_getpeername");
+		/* it's better to stop here and do debugging */
+		exit(EXIT_FAILURE); 
+	}
+	#endif
+ 
+	/* Insert the structure to the queue */
+	TAILQ_INSERT_TAIL(&g_sockq[mctx->cpu], c, link);
+
+	struct pkt_ctx *pi;
+	if(mtcp_getlastbuf(mctx, sock, side, &pi) < 0){
+		fprintf(stderr, "Failed to get packet context\n");
+		exit(-1);
+	}
+	if(pi!=NULL)
+	{
+		printf("pkt_len:%d\n",((pi->p).pkt_buf)->pkt_len);
+		printf("Send FLOW_TCP_SYN_EVENT_ID...\n");
+		send_event_data(FLOW_TCP_SYN_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
+	}
+}	
+#endif
 /*----------------------------------------------------------------------------*/
 /* Destroy connection structure */
 static void
 cb_destroy(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 {
-	//printf("+++++++++++++++++cb_destroy+++++++++++++++\n");
+	printf("+++++++++++++++++cb_destroy+++++++++++++++\n");
 	STATE_FLAG = TCP_CLOSED;
 	#ifdef TIME_STAT
 	unsigned long long start_tsc = rdtscll();
@@ -205,12 +245,24 @@ cb_destroy(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 
 	TAILQ_REMOVE(&g_sockq[mctx->cpu], c, link);
 	free(c);
-	#ifdef TIME_STAT
-	UpdateStatCounter(&stat_cb_destroy, rdtscll() - start_tsc);
-	#endif	
+	
+	printf("Send FLOW_TCP_END_EVENT_ID...\n");
+	send_event_data(FLOW_TCP_END_EVENT_ID, destination_id, NULL);
 
-	//send_event_data(FLOW_TCP_END_EVENT_ID, destination_id, NULL);
 
+	#if 0
+	struct pkt_ctx *pi;
+	if(mtcp_getlastbuf(mctx, sock, side, &pi) < 0){
+		fprintf(stderr, "Failed to get packet context\n");
+		exit(-1);
+	}
+	if(pi!=NULL)
+	{
+		printf("Send FLOW_TCP_END_EVENT_ID...\n");
+		send_event_data(FLOW_TCP_END_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
+	}
+	#endif
+	
 }
 /*----------------------------------------------------------------------------*/
 /* Update connection's TCP state of each side */
@@ -218,7 +270,7 @@ cb_destroy(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 static void
 cb_st_chg(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 {
-	//printf("++++++++++++++++==st_chg++++++++++++++\n");
+	printf("++++++++++++++++st_chg++++++++++++++\n");
 	#ifdef TIME_STAT
 	unsigned long long start_tsc = rdtscll();
 	#endif	
@@ -228,32 +280,49 @@ cb_st_chg(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 	if (!(c = find_connection(mctx->cpu, sock)))
 		return;
 
+	STATE_FLAG = TCP_ESTABLISHED;
+	#if 1
 	if (side == MOS_SIDE_CLI) {
 		if (mtcp_getsockopt(mctx, c->sock, SOL_MONSOCKET, MOS_TCP_STATE_CLI,
 						(void *)&c->cli_state, &intlen) < 0) {
-			perror("mtcp_getsockopt");
+			perror("mtcp_getsockopt\n");
 			exit(-1); /* it's better to stop here and do debugging */
 		}
-		if(c->cli_state == TCP_ESTABLISHED)
+		/*if(c->cli_state == TCP_ESTABLISHED)
 		{
+			printf("set TCP_ESTABLISHED...\n");
 			STATE_FLAG = TCP_ESTABLISHED;
-		}		
+		}*/
 	} else {
 		if (mtcp_getsockopt(mctx, c->sock, SOL_MONSOCKET, MOS_TCP_STATE_SVR,
 						(void *)&c->svr_state, &intlen) < 0) {
-			perror("mtcp_getsockopt");
+			perror("mtcp_getsockopt\n");
 			exit(-1); /* it's better to stop here and do debugging */
 		}
-		if(c->svr_state == TCP_ESTABLISHED)
+		/*if(c->svr_state == TCP_ESTABLISHED)
 		{
+			printf("set TCP_ESTABLISHED...\n");
 			STATE_FLAG = TCP_ESTABLISHED;
-		}
+		}*/
 	}
-	#ifdef TIME_STAT
-	UpdateStatCounter(&stat_cb_st_chg, rdtscll() - start_tsc);
-	#endif	
+	#endif
+
+	//if(STATE_FLAG == TCP_ESTABLISHED)
+	
+	struct pkt_ctx *pi;
+	if(mtcp_getlastbuf(mctx, sock, side, &pi) < 0){
+		fprintf(stderr, "Failed to get packet context\n");
+		exit(-1);
+	}
+	if(pi!=NULL)
+	{
+		printf("pkt_len:%d\n",((pi->p).pkt_buf)->pkt_len);
+		printf("Send FLOW_TCP_ESTABLISH_EVENT_ID...\n");
+		send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
+	}
+	
 }
-#endif
+
 /*----------------------------------------------------------------------------*/
 /* Convert state value (integer) to string (char array) */
 //Defined in core/src/include/mos_api.h from 0 to 10
@@ -351,12 +420,11 @@ cb_printstat(mctx_t mctx, int sock, int side,
 static void
 cb_pkt_content(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 {
-	//printf("+++++++++++++++++++cb_pkt_content+++++++++++\n");
+	printf("+++++++++++++++++++cb_pkt_content+++++++++++\n");
 	#ifdef TIME_STAT
 	unsigned long long start_tsc = rdtscll();
 	#endif	
 	//struct pkt_info pi;
-	//struct pkt_info *pi = rte_zmalloc("ev msg", sizeof(struct pkt_info), 0);
 	struct pkt_ctx *pi;
 	if(mtcp_getlastbuf(mctx, sock, side, &pi) < 0){
 		fprintf(stderr, "Failed to get packet context\n");
@@ -398,15 +466,22 @@ cb_pkt_content(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *a
 		//PrintBuff((char*)(pi->p).pkt_buf);
 		//printf("strlen(pi.p->pkt_buf):%ld++++++++++++++\n",strlen((char*)((pi->p).pkt_buf)));
 		//printf("%d\n",dpdk_buff->pkt_len);
-		send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
+		if(pi!=NULL)
+		{
+			printf("Send FLOW_TCP_ESTABLISH_EVENT_ID...\n");
+			send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
+		}
 	}
+	/*
 	else if(STATE_FLAG == TCP_LISTEN){
 		//PrintBuff((char*)(pi->p).pkt_buf);
+		printf("Send FLOW_TCP_SYN_EVENT_ID...\n");
 		send_event_data(FLOW_TCP_SYN_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
 	}else if(STATE_FLAG == TCP_CLOSED){
 		//PrintBuff((char*)(pi->p).pkt_buf);
+		printf("Send FLOW_TCP_END_EVENT_ID...\n");
 		send_event_data(FLOW_TCP_END_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
-	}
+	}*/
 }
 #endif
 

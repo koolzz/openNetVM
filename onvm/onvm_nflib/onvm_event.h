@@ -631,13 +631,25 @@ void send_event_mempool(uint16_t dest_id){
         msg->data = (void*)pubsub_msg_pool;
         onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
 }
-void get_event_mempool(uint16_t dest_id, uint16_t *src_id){
+#if 1
+void get_event_mempool(uint16_t dest_id, uint32_t *src_id){
         printf("require_event_mempool+++++++++\n");
         struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
         msg->type = GETMEMPOOL;
-        msg->data = (void*)&src_id;
+        msg->data = (void*)src_id;
+        printf("src_id:%d\n",*src_id);
         onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
 }
+#else
+void get_event_mempool(uint16_t dest_id, char *src_id){
+        printf("require_event_mempool+++++++++\n");
+        struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
+        msg->type = GETMEMPOOL;
+        msg->data = (void*)src_id;
+        printf("src_id:%d\n",*src_id);
+        onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
+}
+#endif
 void send_event_msg_pool(uint16_t dest_id){
         printf("send_event_mempool+++++++++1\n");
         struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);

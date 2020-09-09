@@ -212,7 +212,7 @@ do_stats_display(struct rte_mbuf *pkt) {
         }
 }
 
-#if 1
+#if 0
 void
 PrintBuff(char *buf)
 {
@@ -266,6 +266,7 @@ nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
 	subscribe_nf_noflow(get_event(data->root, FLOW_TCP_SYN_EVENT_ID), 3);
 	subscribe_nf_noflow(get_event(data->root, FLOW_TCP_ESTABLISH_EVENT_ID), 3);
 	subscribe_nf_noflow(get_event(data->root, FLOW_TCP_END_EVENT_ID), 3);
+        printf("Trying to get pubsub_msg_pool...\n");
         get_event_mempool(Controller_id,&local_id);
 }
 
@@ -287,7 +288,9 @@ event_inform(struct event_send_msg *msg){
 		printf("************** FLOW_TCP_END_EVENT_ID  pktCount***********\n");
 	}
         //rte_free((void*)msg->pkt);
-        PrintBuff((char*)msg->pkt);
+        //PrintBuff((char*)msg->pkt);
+        struct rte_mbuf* data1 = (struct rte_mbuf*)msg->pkt;
+        printf("data1->pkt_len:%d\n",data1->pkt_len);
         pubsub_msg_pool_put((void*)msg);
         
 }
@@ -303,6 +306,7 @@ msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx){
                 event_inform(msg);
                 pubsub_msg_pool_put((void*)msg1);
         }else if (msg1->type == MEMPOOL){
+                printf("Init pubsub_msg_pool...\n");
                 pubsub_msg_pool_store(msg1->data);
         }else {
                 printf("Recieved unknown event msg type - %d\n", msg1->type);
@@ -336,9 +340,6 @@ main(int argc, char *argv[]) {
 
         const char *progname = argv[0];
         local_id = strtoul(argv[4], NULL, 10);
-        for(int i=0; i<argc; i++){
-                printf("%d:%s\n",i,argv[i]);
-        }
 
         nf_local_ctx = onvm_nflib_init_nf_local_ctx();
         onvm_nflib_start_signal_handler(nf_local_ctx, NULL);
