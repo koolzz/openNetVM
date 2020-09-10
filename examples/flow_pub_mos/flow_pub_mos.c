@@ -47,7 +47,7 @@ struct stat_counter stat_cb_st_new, stat_cb_st_end, stat_cb_st_establish;
 uint64_t alert_cnt = 0;
 //struct rte_mempool *pubsub_msg_pool;
 
-int STATE_FLAG = -1;
+//int STATE_FLAG = -1;
 /*----------------------------------------------------------------------------*/
 /* Global variables */
 
@@ -189,12 +189,10 @@ cb_creation(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 	#endif	
 }
 #else
-
 static void
 cb_creation(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 {
-	printf("+++++++++++++++++++cb_creation++++++++++++++\n");
-	STATE_FLAG = TCP_LISTEN;
+	//printf("+++++++++++++++++++cb_creation++++++++++++++\n");
 	#if 1	
 	socklen_t addrslen = sizeof(struct sockaddr) * 2;
 	struct connection *c;
@@ -205,7 +203,8 @@ cb_creation(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 	/* Fill values of the connection structure */
 	c->sock = sock;
 	if (mtcp_getpeername(mctx, c->sock, (void *)c->addrs, &addrslen,
-						 MOS_SIDE_CLI) < 0) {
+						//MOS_SIDE_BOTH) < 0) {
+						MOS_SIDE_CLI) < 0) {
 		perror("mtcp_getpeername");
 		/* it's better to stop here and do debugging */
 		exit(EXIT_FAILURE); 
@@ -222,9 +221,9 @@ cb_creation(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 	}
 	if(pi!=NULL)
 	{
-		printf("pkt_len:%d\n",((pi->p).pkt_buf)->pkt_len);
-		printf("Send FLOW_TCP_SYN_EVENT_ID...\n");
-		send_event_data(FLOW_TCP_SYN_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
+		//printf("pkt_len:%d\n",((pi->p).pkt_buf)->pkt_len);
+		//printf("Send FLOW_TCP_SYN_EVENT_ID...\n");
+		//send_event_data(FLOW_TCP_SYN_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
 	}
 }	
 #endif
@@ -233,8 +232,6 @@ cb_creation(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 static void
 cb_destroy(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 {
-	printf("+++++++++++++++++cb_destroy+++++++++++++++\n");
-	STATE_FLAG = TCP_CLOSED;
 	#ifdef TIME_STAT
 	unsigned long long start_tsc = rdtscll();
 	#endif	
@@ -242,13 +239,6 @@ cb_destroy(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 
 	if (!(c = find_connection(mctx->cpu, sock)))
 		return;
-
-	TAILQ_REMOVE(&g_sockq[mctx->cpu], c, link);
-	free(c);
-	
-	printf("Send FLOW_TCP_END_EVENT_ID...\n");
-	send_event_data(FLOW_TCP_END_EVENT_ID, destination_id, NULL);
-
 
 	#if 0
 	struct pkt_ctx *pi;
@@ -262,15 +252,45 @@ cb_destroy(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 		send_event_data(FLOW_TCP_END_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
 	}
 	#endif
-	
+
+	TAILQ_REMOVE(&g_sockq[mctx->cpu], c, link);
+	free(c);
+
+	//printf("Send FLOW_TCP_END_EVENT_ID...\n");
+	//send_event_data(FLOW_TCP_END_EVENT_ID, destination_id, NULL);
+
 }
+
+/*----------------------------------------------------------------------------*/
+/* get pkt and Send event_id and pkt  */
+#if 0
+static void
+send_pkt_to_dest(mctx_t mctx, int sock, int side, uint64_t event_id){
+	struct pkt_ctx *pi;
+	if(mtcp_getlastbuf(mctx, sock, side, &pi) < 0){
+		fprintf(stderr, "Failed to get packet context\n");
+		exit(-1);
+	}
+	if(pi!=NULL)
+	{
+		//printf("pkt_len:%d\n",((pi->p).pkt_buf)->pkt_len);
+		//printf("Send FLOW_TCP_ESTABLISH_EVENT_ID...\n");
+		send_event_data(event_id, destination_id, (void*)(pi->p).pkt_buf);
+	}
+	else{
+		//printf("pkt is null\n");
+		send_event_data(event_id, destination_id, NULL);
+	}
+}
+#endif
 /*----------------------------------------------------------------------------*/
 /* Update connection's TCP state of each side */
 
 static void
 cb_st_chg(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 {
-	printf("++++++++++++++++st_chg++++++++++++++\n");
+	//printf("++++++++++++++++st_chg++++++++++++++\n");
+
 	#ifdef TIME_STAT
 	unsigned long long start_tsc = rdtscll();
 	#endif	
@@ -280,46 +300,40 @@ cb_st_chg(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 	if (!(c = find_connection(mctx->cpu, sock)))
 		return;
 
-	STATE_FLAG = TCP_ESTABLISHED;
-	#if 1
+	int tcp_state = -1;
+
 	if (side == MOS_SIDE_CLI) {
+		
 		if (mtcp_getsockopt(mctx, c->sock, SOL_MONSOCKET, MOS_TCP_STATE_CLI,
 						(void *)&c->cli_state, &intlen) < 0) {
 			perror("mtcp_getsockopt\n");
 			exit(-1); /* it's better to stop here and do debugging */
 		}
-		/*if(c->cli_state == TCP_ESTABLISHED)
-		{
-			printf("set TCP_ESTABLISHED...\n");
-			STATE_FLAG = TCP_ESTABLISHED;
-		}*/
+		//printf("tcpstate:%d\n",c->cli_state);
+		tcp_state = c->cli_state;
 	} else {
 		if (mtcp_getsockopt(mctx, c->sock, SOL_MONSOCKET, MOS_TCP_STATE_SVR,
 						(void *)&c->svr_state, &intlen) < 0) {
 			perror("mtcp_getsockopt\n");
 			exit(-1); /* it's better to stop here and do debugging */
 		}
-		/*if(c->svr_state == TCP_ESTABLISHED)
-		{
-			printf("set TCP_ESTABLISHED...\n");
-			STATE_FLAG = TCP_ESTABLISHED;
-		}*/
+		//printf("tcpstate:%d\n",c->svr_state);
+		tcp_state = c->svr_state;
 	}
-	#endif
 
-	//if(STATE_FLAG == TCP_ESTABLISHED)
 	
-	struct pkt_ctx *pi;
-	if(mtcp_getlastbuf(mctx, sock, side, &pi) < 0){
-		fprintf(stderr, "Failed to get packet context\n");
-		exit(-1);
-	}
-	if(pi!=NULL)
+	if(tcp_state == TCP_ESTABLISHED)
 	{
-		printf("pkt_len:%d\n",((pi->p).pkt_buf)->pkt_len);
-		printf("Send FLOW_TCP_ESTABLISH_EVENT_ID...\n");
-		send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
+		//printf(" Send TCP established!\n");
+		//send_pkt_to_dest(mctx, sock, side,FLOW_TCP_ESTABLISH_EVENT_ID);
 	}
+	//else if(tcp_state == TCP_FIN_WAIT_1 || tcp_state == TCP_FIN_WAIT_2 || tcp_state== TCP_CLOSING || tcp_state == TCP_CLOSE_WAIT)
+	else if(tcp_state == TCP_CLOSED)
+	{
+		//printf(" Send TCP CLOSE\n");
+		//send_pkt_to_dest(mctx, sock, side, FLOW_TCP_END_EVENT_ID);
+	}
+	
 	
 }
 
@@ -420,7 +434,7 @@ cb_printstat(mctx_t mctx, int sock, int side,
 static void
 cb_pkt_content(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 {
-	printf("+++++++++++++++++++cb_pkt_content+++++++++++\n");
+	//printf("+++++++++++++++++++cb_pkt_content+++++++++++\n");
 	#ifdef TIME_STAT
 	unsigned long long start_tsc = rdtscll();
 	#endif	
@@ -431,20 +445,15 @@ cb_pkt_content(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *a
 		exit(-1);
 	}
 
-	#if 0
-	if (mtcp_getlastpkt(mctx, sock, side, &pi) < 0) {
-		fprintf(stderr, "Failed to get packet context\n");
-		exit(-1); /* no point in proceeding if the timer is broken */
-	}
-	#endif
-
-	//printf("len: %d\n%s\n", pi.payloadlen, pi.payload);
-
 	#ifdef TIME_STAT
 	UpdateStatCounter(&stat_cb_content, rdtscll() - start_tsc);	
 	#endif	
 
-	if(STATE_FLAG == TCP_ESTABLISHED)
+	struct connection *c;
+	if (!(c = find_connection(mctx->cpu, sock)))
+		return;
+
+	if(c->cli_state == TCP_ESTABLISHED || c->svr_state == TCP_ESTABLISHED)
 	{		
 		#if 0
 		//char *pkt_sent = NULL;
@@ -468,17 +477,14 @@ cb_pkt_content(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *a
 		//printf("%d\n",dpdk_buff->pkt_len);
 		if(pi!=NULL)
 		{
-			printf("Send FLOW_TCP_ESTABLISH_EVENT_ID...\n");
-			send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
+			//printf("Send FLOW_TCP_ESTABLISH_EVENT_ID...\n");
+			//send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
 		}
 	}
-	/*
-	else if(STATE_FLAG == TCP_LISTEN){
-		//PrintBuff((char*)(pi->p).pkt_buf);
+	/*else if(STATE_FLAG == TCP_LISTEN){
 		printf("Send FLOW_TCP_SYN_EVENT_ID...\n");
 		send_event_data(FLOW_TCP_SYN_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
 	}else if(STATE_FLAG == TCP_CLOSED){
-		//PrintBuff((char*)(pi->p).pkt_buf);
 		printf("Send FLOW_TCP_END_EVENT_ID...\n");
 		send_event_data(FLOW_TCP_END_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
 	}*/
@@ -524,21 +530,17 @@ RegisterCallbacks(mctx_t mctx, int sock, event_t ev_new_syn)
 				   MOS_HK_SND, cb_st_chg)) {
 		fprintf(stderr, "Failed to register cb_st_chg()\n");
 		exit(-1); /* no point in proceeding if callback registration fails */
-	}	
-	#if 0
+	}		
 	if (mtcp_register_callback(mctx, sock, MOS_ON_TCP_STATE_CHANGE,
 				   MOS_HK_RCV, cb_st_chg)) {
 		fprintf(stderr, "Failed to register cb_st_chg()\n");
 		exit(-1); /* no point in proceeding if callback registration fails */
 	}
-	#endif
-	#if 1
 	if (mtcp_register_callback(mctx, sock, MOS_ON_PKT_IN,
 				   MOS_HK_SND, cb_pkt_content)) {
 		fprintf(stderr, "Failed to register cb_pkt_cnt()\n");
 		exit(-1); 
 	}
-	#endif
 
 	/* CPU 0 is in charge of printing stats */
 	#if PRINT_STAT

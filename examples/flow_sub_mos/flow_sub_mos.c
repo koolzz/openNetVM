@@ -274,10 +274,10 @@ void
 event_inform(struct event_send_msg *msg){
         if(msg->event_id==FLOW_TCP_SYN_EVENT_ID)
 	{
-		printf("************** FLOW_TCP_SYN_EVENT_ID  pktCount***********\n");
+		//printf("************** FLOW_TCP_SYN_EVENT_ID  pktCount***********\n");
 	}
 	else if(msg->event_id==FLOW_TCP_ESTABLISH_EVENT_ID){
-	        printf("************** FLOW_TCP_ESTABLISH_EVENT_ID pktCount***********\n");
+	        //printf("************** FLOW_TCP_ESTABLISH_EVENT_ID pktCount***********\n");
                 /*char *data1 = (char*)msg->pkt;
                 if(data1 != NULL){
                         printf("%s\n",data1);
@@ -285,13 +285,17 @@ event_inform(struct event_send_msg *msg){
                 
 	}
 	else if(msg->event_id==FLOW_TCP_END_EVENT_ID){
-		printf("************** FLOW_TCP_END_EVENT_ID  pktCount***********\n");
+		//printf("************** FLOW_TCP_END_EVENT_ID  pktCount***********\n");
 	}
         //rte_free((void*)msg->pkt);
         //PrintBuff((char*)msg->pkt);
-        struct rte_mbuf* data1 = (struct rte_mbuf*)msg->pkt;
-        printf("data1->pkt_len:%d\n",data1->pkt_len);
+        //struct rte_mbuf* data1 = (struct rte_mbuf*)msg->pkt;
+        //printf("data1->pkt_len:%d\n",data1->pkt_len);
         pubsub_msg_pool_put((void*)msg);
+        /*if(msg->pkt!=NULL)
+        {
+                rte_free((void*)msg->pkt);
+        }*/
         
 }
 

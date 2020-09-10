@@ -604,7 +604,7 @@ int send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt)
         msg->data = (void *)msg_event;
         //printf("send_event_data+++++++++++++++will send a msg to nf\n");
 
-        #if 0
+        #if 1
         ret = onvm_nflib_send_a_msg_to_nf(dest_id, (void*)msg);
         while (ret != 0)
         {
@@ -612,8 +612,7 @@ int send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt)
                 //printf("onvm_event.h onvm_nflib_send_msg_to_nf\n");
                 //exit(-1);
         }
-        #endif
-        #if 1
+        #else
         //send msgs one by one
         ret = onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
         while (ret != 0)
