@@ -35,7 +35,7 @@
 #define MOS_CONFIG_FILE		"config/mos-onvm.conf"
 //#define MOS_CONFIG_FILE               "config/mos.conf"
 #define SENDY 1
-
+#define SEND_ENABLE 1
 //#define TIME_STAT
 #ifdef TIME_STAT
 #define PRINT_STAT 0
@@ -223,7 +223,9 @@ cb_creation(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 	{
 		//printf("pkt_len:%d\n",((pi->p).pkt_buf)->pkt_len);
 		//printf("Send FLOW_TCP_SYN_EVENT_ID...\n");
-		//send_event_data(FLOW_TCP_SYN_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
+		#if SEND_ENABLE
+		send_event_data(FLOW_TCP_SYN_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
+		#endif
 	}
 }	
 #endif
@@ -263,7 +265,7 @@ cb_destroy(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 
 /*----------------------------------------------------------------------------*/
 /* get pkt and Send event_id and pkt  */
-#if 0
+#if 1
 static void
 send_pkt_to_dest(mctx_t mctx, int sock, int side, uint64_t event_id){
 	struct pkt_ctx *pi;
@@ -275,11 +277,15 @@ send_pkt_to_dest(mctx_t mctx, int sock, int side, uint64_t event_id){
 	{
 		//printf("pkt_len:%d\n",((pi->p).pkt_buf)->pkt_len);
 		//printf("Send FLOW_TCP_ESTABLISH_EVENT_ID...\n");
+		#if SEND_ENABLE
 		send_event_data(event_id, destination_id, (void*)(pi->p).pkt_buf);
+		#endif
 	}
 	else{
 		//printf("pkt is null\n");
+		#if SEND_ENABLE
 		send_event_data(event_id, destination_id, NULL);
+		#endif
 	}
 }
 #endif
@@ -325,13 +331,13 @@ cb_st_chg(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 	if(tcp_state == TCP_ESTABLISHED)
 	{
 		//printf(" Send TCP established!\n");
-		//send_pkt_to_dest(mctx, sock, side,FLOW_TCP_ESTABLISH_EVENT_ID);
+		send_pkt_to_dest(mctx, sock, side,FLOW_TCP_ESTABLISH_EVENT_ID);
 	}
 	//else if(tcp_state == TCP_FIN_WAIT_1 || tcp_state == TCP_FIN_WAIT_2 || tcp_state== TCP_CLOSING || tcp_state == TCP_CLOSE_WAIT)
 	else if(tcp_state == TCP_CLOSED)
 	{
 		//printf(" Send TCP CLOSE\n");
-		//send_pkt_to_dest(mctx, sock, side, FLOW_TCP_END_EVENT_ID);
+		send_pkt_to_dest(mctx, sock, side, FLOW_TCP_END_EVENT_ID);
 	}
 	
 	
@@ -478,16 +484,11 @@ cb_pkt_content(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *a
 		if(pi!=NULL)
 		{
 			//printf("Send FLOW_TCP_ESTABLISH_EVENT_ID...\n");
-			//send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
+			#if SEND_ENABLE
+			send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
+			#endif
 		}
 	}
-	/*else if(STATE_FLAG == TCP_LISTEN){
-		printf("Send FLOW_TCP_SYN_EVENT_ID...\n");
-		send_event_data(FLOW_TCP_SYN_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
-	}else if(STATE_FLAG == TCP_CLOSED){
-		printf("Send FLOW_TCP_END_EVENT_ID...\n");
-		send_event_data(FLOW_TCP_END_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
-	}*/
 }
 #endif
 

@@ -115,8 +115,6 @@ struct event_publish_data {
         int done;
 };
 
-
-
 struct nf_subscriber {
         uint16_t id;
         uint8_t flows[MAX_FLOWS];
@@ -135,10 +133,22 @@ struct event_tree {
         struct onvm_tree_node *children[MAX_EVENTS]; // sub events
 };
 
+
+// Use a union to hold whichever data type we need
+// This might waste space if one type is much larger than the other
+/*union event_data {
+        struct event_send_msg send;
+        struct event_publish_data publish;
+        struct event_subscribe_data subscribe;
+        struct event_retrieve_data retrieve;
+};*/
+
 // TODO: Merge event_msg and event_send_msg into one struct. and call it struct pub_sub_msg
 struct event_msg {
         int type; 
-        void *data;
+        //void *data;
+        //union event_data;
+
 };
 
 /* Sent to NF instead of pkts (Grace had the actual struct this is just a quick definition for testing purpouses */
@@ -188,6 +198,7 @@ void event_msg_pool_store(void *pool);
 void event_send_msg_pool_store(void *pool);
 void send_event_msg_pool(uint16_t dest_id);
 void send_event_send_msg_pool(uint16_t dest_id);
+void get_event_mempool(uint16_t dest_id, uint32_t *src_id);
 
 /* For testing */
 void print_targets(struct event_tree_node *event);
@@ -559,25 +570,21 @@ int send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt){
 }
 #endif
 
-#if 1 
+#if 0
 void send_event_data_msg(uint64_t event_id, uint16_t dest_id, void *pkt){
         char *pkt_sent;
-        //char pkt_sent[1500]={0};
-        //char pkt_tmp[1500];
-        //memset(pkt_tmp, 0, 1500);
 
         if(rte_mempool_get(pubsub_msg_pool, (void**)&pkt_sent) < 0){
                 RTE_LOG(INFO, APP, "Unable to allocate event_msg msg from pool when trying to send msg to nf\n");
                 return;
         }
 
-        //printf("send_event_data_msg++++++++++++++1\n");
         rte_strlcpy(pkt_sent, (char*)pkt, strlen((char*)pkt));
-        //printf("send_event_data_msg++++++++++++++2\n");
         
         send_event_data(event_id, dest_id, (void*)pkt_sent);
         
 }
+#endif
 //for pubsub_msg_pool
 int send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt)
 {
@@ -602,7 +609,6 @@ int send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt)
 	
         msg->type = SEND;
         msg->data = (void *)msg_event;
-        //printf("send_event_data+++++++++++++++will send a msg to nf\n");
 
         #if 1
         ret = onvm_nflib_send_a_msg_to_nf(dest_id, (void*)msg);
@@ -663,6 +669,6 @@ void send_event_send_msg_pool(uint16_t dest_id){
         msg->data = (void*)event_send_msg_pool;
         onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
 }
-#endif //by store pubsub_msg into pool.
+//#endif //by store pubsub_msg into pool.
 
 #endif  // _ONVM_EVENT_H_

@@ -283,12 +283,12 @@ send_event(uint64_t event_id, void *msg)
 	for (i = 0; i < event->subscriber_cnt; i++) {
                 //printf("event->subscribers[i]->id:%d\n",event->subscribers[i]->id);
 		nf_id = event->subscribers[i]->id;
-		//ret = onvm_nflib_send_a_msg_to_nf(nf_id, msg);
-                ret = onvm_nflib_send_msg_to_nf(nf_id, msg);
+		ret = onvm_nflib_send_a_msg_to_nf(nf_id, msg);
+                //ret = onvm_nflib_send_msg_to_nf(nf_id, msg);
                 while (ret != 0)
                 {
-                        ret = onvm_nflib_send_msg_to_nf(nf_id, msg);
-                       //ret = onvm_nflib_send_a_msg_to_nf(nf_id, msg);
+                        //ret = onvm_nflib_send_msg_to_nf(nf_id, msg);
+                        ret = onvm_nflib_send_a_msg_to_nf(nf_id, msg);
                 }
 	}
         
@@ -353,9 +353,16 @@ nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
                 pubsub_msg_pool_put((void*)event_msg);
                 #endif
                 
+                #if 1
                 struct event_send_msg *event_msg_data = (struct event_send_msg*)event_msg->data;
-                //PrintBuff((char*)event_msg_data->pkt);
 		send_event(event_msg_data->event_id, (void*)event_msg);
+                #else
+                        //struct event_send_msg *event_msg_data = (struct event_send_msg*)event_msg->data;
+                        //if(event_msg_data->pkt!=NULL)
+                        //        rte_free((void*)event_msg_data->pkt);
+                        //pubsub_msg_pool_put((void*)event_msg_data);
+                        pubsub_msg_pool_put((void*)event_msg);
+                #endif
 	} else if (event_msg->type == MEMPOOL){
                 pubsub_msg_pool_store(event_msg->data);
                 //event_msg_pool_store(event_msg->data);

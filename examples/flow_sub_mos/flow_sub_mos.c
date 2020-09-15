@@ -303,10 +303,10 @@ event_inform(struct event_send_msg *msg){
 void
 msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx){
 	//printf("NF %d recieved msg\n", nf_local_ctx->nf->instance_id);
-	struct event_msg *msg1 = (struct event_msg *)msg_data;
-	struct event_send_msg *msg = (struct event_send_msg *) msg1->data;
+	struct event_msg *msg1 = (struct event_msg *)msg_data;	
         
         if (msg1->type == SEND){
+                struct event_send_msg *msg = (struct event_send_msg *) msg1->data;
                 event_inform(msg);
                 pubsub_msg_pool_put((void*)msg1);
         }else if (msg1->type == MEMPOOL){
