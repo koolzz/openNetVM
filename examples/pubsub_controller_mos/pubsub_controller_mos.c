@@ -107,7 +107,6 @@ struct event_tree_node **events;
 static uint32_t print_delay = 1000000;
 
 static uint32_t destination;
-static uint32_t src_nf_id;
 
 void nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx);
 static void send_event(uint64_t event_id, void *msg);
@@ -287,8 +286,8 @@ send_event(uint64_t event_id, void *msg)
                 //ret = onvm_nflib_send_msg_to_nf(nf_id, msg);
                 while (ret != 0)
                 {
-                        //ret = onvm_nflib_send_msg_to_nf(nf_id, msg);
                         ret = onvm_nflib_send_a_msg_to_nf(nf_id, msg);
+                        //ret = onvm_nflib_send_msg_to_nf(nf_id, msg);
                 }
 	}
         
@@ -315,46 +314,25 @@ nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
 
         nf_local_ctx->nf = nf_local_ctx->nf;
         if (event_msg->type == SUBSCRIBE) {
-                struct event_subscribe_data *msg = (struct event_subscribe_data *)event_msg->data;
+                struct event_subscribe_data *msg = (struct event_subscribe_data*)event_msg->subscribe;
+                //subscribe_nf(msg.event, msg.id, msg.flow_id);
                 subscribe_nf(msg->event, msg->id, msg->flow_id);
         } else if (event_msg->type == RETRIEVE) {
-                struct event_retrieve_data *data = (struct event_retrieve_data*)event_msg->data;
+                struct event_retrieve_data *data = (struct event_retrieve_data*)event_msg->retrieve;
                 data->root = events[ROOT_EVENT_ID];
                 data->done = 1;
+                //pubsub_msg_pool_put((void*)event_msg);
         } else if (event_msg->type == PUBLISH) {
-                struct event_publish_data *data = (struct event_publish_data*)event_msg->data;
+                struct event_publish_data *data = (struct event_publish_data*)event_msg->publish;
+                //struct event_publish_data *data = (struct event_publish_data*)event_msg->publish;
                 add_event(ROOT_EVENT, data->event);
                 events[data->event->event_id] = data->event;
                 data->done = 1;
-        } else if (event_msg->type == SEND){
-                #if 0
-                //printf("event_msg->type == SEND\n");
-                //change onvm_event_msg to event_send_msg;
-		struct event_send_msg *event_msg_data = (struct event_send_msg*)event_msg->data;
-                /*rte_free((void*)event_msg_data->pkt);
-                rte_free((void*)event_msg_data);
-                rte_free((void*)event_msg);*/
-                /*if(event_msg_data->pkt != NULL){
-                        char *data1 = (char*)(event_msg_data->pkt);
-                        printf("%s\n",data1);
-                }*/
-                //printf("event_msg_data->event_id:%ld\n",event_msg_data->event_id);
-                //if(event_msg_data->pkt != NULL){
-                //        pubsub_msg_pool_put((void*)event_msg_data->pkt);
-                //}
-                /*if(event_msg_data->pkt != NULL)
-                {
-                        printf("1strlen((char*)event_msg_data->pkt):%ld\n",strlen((char*)event_msg_data->pkt));
-                        
-                }*/
-                //PrintBuff((char*)event_msg_data->pkt);
-                //rte_free((void*)event_msg_data->pkt);
-                pubsub_msg_pool_put((void*)event_msg_data);
-                pubsub_msg_pool_put((void*)event_msg);
-                #endif
-                
+                //pubsub_msg_pool_put((void*)event_msg);
+        } else if (event_msg->type == SEND){                
                 #if 1
-                struct event_send_msg *event_msg_data = (struct event_send_msg*)event_msg->data;
+                struct event_send_msg *event_msg_data = (struct event_send_msg*)&(event_msg->send);
+                //printf("event_msg_data->event_id:%ld\n",event_msg_data->event_id);
 		send_event(event_msg_data->event_id, (void*)event_msg);
                 #else
                         //struct event_send_msg *event_msg_data = (struct event_send_msg*)event_msg->data;
@@ -363,16 +341,7 @@ nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
                         //pubsub_msg_pool_put((void*)event_msg_data);
                         pubsub_msg_pool_put((void*)event_msg);
                 #endif
-	} else if (event_msg->type == MEMPOOL){
-                pubsub_msg_pool_store(event_msg->data);
-                //event_msg_pool_store(event_msg->data);
-        }else if(event_msg->type == GETMEMPOOL){
-                uint32_t *data1 = (uint32_t *)event_msg->data;
-                //printf("data1:%d(should be submos nf_id)\n",*data1);
-                src_nf_id = *data1;
-                send_event_mempool(src_nf_id);
-        }
-	else {
+	} else {
                 printf("Recieved unknown event msg type - %d\n", event_msg->type);
         }
 }
@@ -424,10 +393,6 @@ main(int argc, char *argv[]) {
         nf_function_table->setup = &nf_setup;
         nf_function_table->msg_handler = &nf_msg_handler;
         
-        /*int retval = lookup_pubsub_msg_pool();
-        if (retval != 0) {
-                rte_exit(EXIT_FAILURE, "Cannot find pubsub message pool: %s\n", rte_strerror(rte_errno));
-        }*/
         if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
                 onvm_nflib_stop(nf_local_ctx);
                 if (arg_offset == ONVM_SIGNAL_TERMINATION) {
@@ -436,6 +401,20 @@ main(int argc, char *argv[]) {
                 } else {
                         rte_exit(EXIT_FAILURE, "Failed ONVM init\n");
                 }
+        }
+
+        /*int retval = lookup_pubsub_msg_pool();
+        if (retval != 0) {
+                rte_exit(EXIT_FAILURE, "Cannot find pubsub message pool: %s\n", rte_strerror(rte_errno));
+        }*/
+        pubsub_msg_pool = lookup_pubsub_msg_pool();
+        if(pubsub_msg_pool == NULL)
+        {
+                printf("Cannot find pubsub_msg_pool...\n");
+                exit(-1);
+        }
+        else{
+                printf("Find pubsub_msg_pool...\n");
         }
 
         argc -= arg_offset;

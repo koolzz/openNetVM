@@ -95,36 +95,14 @@ struct flow_stats {
         int is_active;
 };
 
-#if 0
-struct pkt_info {
-	uint32_t      cur_ts;    /**< packet receiving time (read-only:ro) */
-	int8_t        in_ifidx;  /**< input interface (ro) */
-	
-	/* ETH */
-	uint16_t      eth_len;
-	
-	/* IP */
-	uint16_t      ip_len;
-	
-	/* TCP */
-	uint64_t      offset;    /**< TCP ring buffer offset */
-	uint16_t      payloadlen;
-	uint32_t      seq;
-	uint32_t      ack_seq;
-	uint16_t      window;
-        struct ethhdr *ethh;
-	struct iphdr  *iph;
-	struct tcphdr *tcph;
-	uint8_t       *payload;
-};
-#endif
-
 struct state_info *state_info;
 void nf_setup(struct onvm_nf_local_ctx *nf_local_ctx);
 void msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx);
 void print_comrad(void);
 void print_comrad2(void);
 void print_comrad3(void);
+
+struct rte_mempool *pubsub_msg_pool;
 /*
  * Print a usage message
  */
@@ -250,6 +228,7 @@ PrintBuff(char *buf)
 }
 #endif
 
+#if 0
 void
 nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
 	printf("Hi boi %d\n", nf_local_ctx->nf->instance_id);
@@ -257,7 +236,7 @@ nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
 	struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
         msg->type = RETRIEVE;
         struct event_retrieve_data *data = rte_zmalloc("ev ret data", sizeof(struct event_retrieve_data), 0);
-        msg->data = (void *)data;
+        msg->msg_data = (void *)data;
         onvm_nflib_send_msg_to_nf(2, (void*)msg);
 	
 	while (data->done != 1)
@@ -269,6 +248,31 @@ nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
         printf("Trying to get pubsub_msg_pool...\n");
         get_event_mempool(Controller_id,&local_id);
 }
+#else
+void
+nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
+	printf("Hi boi %d\n", nf_local_ctx->nf->instance_id);
+        struct event_msg *msg;
+        int ret = rte_mempool_get(pubsub_msg_pool, (void**)&msg);
+        if (ret != 0) {
+            RTE_LOG(INFO, APP, "Unable to allocate pubsub_msg_pool from pool when trying to send msg to nf\n");
+            return;
+        }
+	
+	msg->type = RETRIEVE;
+        struct event_retrieve_data *data = rte_zmalloc("ev ret data", sizeof(struct event_retrieve_data), 0);
+	msg->retrieve = data;
+        onvm_nflib_send_msg_to_nf(Controller_id, (void*)msg);
+	
+	while (data->done != 1)
+                sleep(1);
+
+	subscribe_nf_noflow(get_event(data->root, FLOW_TCP_SYN_EVENT_ID), 3);
+	subscribe_nf_noflow(get_event(data->root, FLOW_TCP_ESTABLISH_EVENT_ID), 3);
+	subscribe_nf_noflow(get_event(data->root, FLOW_TCP_END_EVENT_ID), 3);
+        printf("nf_setup Done...\n");
+}
+#endif
 
 void 
 event_inform(struct event_send_msg *msg){
@@ -278,40 +282,32 @@ event_inform(struct event_send_msg *msg){
 	}
 	else if(msg->event_id==FLOW_TCP_ESTABLISH_EVENT_ID){
 	        //printf("************** FLOW_TCP_ESTABLISH_EVENT_ID pktCount***********\n");
-                /*char *data1 = (char*)msg->pkt;
-                if(data1 != NULL){
-                        printf("%s\n",data1);
-                }*/
-                
 	}
 	else if(msg->event_id==FLOW_TCP_END_EVENT_ID){
 		//printf("************** FLOW_TCP_END_EVENT_ID  pktCount***********\n");
 	}
-        //rte_free((void*)msg->pkt);
-        //PrintBuff((char*)msg->pkt);
-        //struct rte_mbuf* data1 = (struct rte_mbuf*)msg->pkt;
-        //printf("data1->pkt_len:%d\n",data1->pkt_len);
-        pubsub_msg_pool_put((void*)msg);
-        /*if(msg->pkt!=NULL)
+
+        #if 0
+        struct rte_mbuf* data1 = (struct rte_mbuf*)msg->pkt;
+        if(data1!=NULL)
         {
-                rte_free((void*)msg->pkt);
-        }*/
+                print_pkt(data1);
+        }
+        #endif
         
 }
 
 //int pktCount = 0;
 void
 msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx){
+
 	//printf("NF %d recieved msg\n", nf_local_ctx->nf->instance_id);
 	struct event_msg *msg1 = (struct event_msg *)msg_data;	
         
         if (msg1->type == SEND){
-                struct event_send_msg *msg = (struct event_send_msg *) msg1->data;
+                struct event_send_msg *msg = (struct event_send_msg *)&(msg1->send);
                 event_inform(msg);
                 pubsub_msg_pool_put((void*)msg1);
-        }else if (msg1->type == MEMPOOL){
-                printf("Init pubsub_msg_pool...\n");
-                pubsub_msg_pool_store(msg1->data);
         }else {
                 printf("Recieved unknown event msg type - %d\n", msg1->type);
         }
@@ -362,7 +358,17 @@ main(int argc, char *argv[]) {
                         rte_exit(EXIT_FAILURE, "Failed ONVM init\n");
                 }
         }
-        
+
+        pubsub_msg_pool = lookup_pubsub_msg_pool();
+        if(pubsub_msg_pool == NULL)
+        {
+                printf("Cannot find pubsub_msg_pool...\n");
+                exit(-1);
+        }
+        else{
+                printf("Find pubsub_msg_pool...\n");
+        }
+         
         argc -= arg_offset;
         argv += arg_offset;
 

@@ -34,8 +34,11 @@
 /* Default path to mOS configuration file */
 #define MOS_CONFIG_FILE		"config/mos-onvm.conf"
 //#define MOS_CONFIG_FILE               "config/mos.conf"
+
 #define SENDY 1
 #define SEND_ENABLE 1
+#define PUB_POOL 1
+
 //#define TIME_STAT
 #ifdef TIME_STAT
 #define PRINT_STAT 0
@@ -45,7 +48,7 @@ struct stat_counter stat_cb_cnt, stat_cb_content, stat_cb_flow_content;
 struct stat_counter stat_cb_st_new, stat_cb_st_end, stat_cb_st_establish;
 #endif
 uint64_t alert_cnt = 0;
-//struct rte_mempool *pubsub_msg_pool;
+struct rte_mempool *pubsub_msg_pool;
 
 //int STATE_FLAG = -1;
 /*----------------------------------------------------------------------------*/
@@ -119,6 +122,35 @@ sigint_handler(int signum)
 
 /*----------------------------------------------------------------------------*/
 /*Init event to try to connect with controller*/
+#if PUB_POOL
+static int event_init(uint16_t dest_controller)
+{
+	printf("event_init+++++++++++++++++\n");
+	struct event_msg *msg;
+    int ret = rte_mempool_get(pubsub_msg_pool, (void**)&msg);
+    if (ret != 0) {
+        RTE_LOG(INFO, APP, "Unable to allocate pubsub_msg_pool from pool when trying to send msg to nf\n");
+        return ret;
+    }
+	
+	msg->type = RETRIEVE;
+	//struct event_retrieve_data *data;
+	//ret = rte_mempool_get(pubsub_msg_pool, (void**)&data);
+	struct event_retrieve_data *data = rte_zmalloc("ev ret data", sizeof(struct event_retrieve_data), 0);
+	msg->retrieve = data;
+	//struct event_retrieve_data* data = msg->retrieve;
+	onvm_nflib_send_msg_to_nf(dest_controller, (void*)msg);
+	//struct event_retrieve_data* data = msg->retrieve;
+	while (data->done != 1)
+		sleep(1);
+	publish_event(dest_controller,FLOW_TCP_SYN_EVENT_ID);
+	publish_event(dest_controller,FLOW_TCP_ESTABLISH_EVENT_ID);
+	publish_event(dest_controller,FLOW_TCP_END_EVENT_ID);
+
+	printf("event_init done++++dest_controller:%d+++++++++\n",dest_controller);
+	return 0;
+}
+#else
 static void event_init(uint16_t dest_controller)
 {
 	printf("event_init+++++++++++++++++\n");
@@ -136,6 +168,7 @@ static void event_init(uint16_t dest_controller)
 
 	printf("event_init done++++dest_controller:%d+++++++++\n",dest_controller);
 }
+#endif
 /*----------------------------------------------------------------------------*/
 /* Find connection structure by socket ID */
 static inline struct connection *
@@ -664,8 +697,14 @@ main(int argc, char **argv)
     if (retval != 0) {
         rte_exit(EXIT_FAILURE, "Cannot create pubsub message pool: %s\n", rte_strerror(rte_errno));
     }
+	pubsub_msg_pool = lookup_pubsub_msg_pool();
+	if(pubsub_msg_pool == NULL)
+		exit(-1);
+	else{
+		printf("Get pubsub_msg_pool...\n");
+	}
 	//retval = lookup_pubsub_msg_pool();
-	send_event_mempool(destination_id);
+	//send_event_mempool(destination_id);
 	//send_event_msg_pool(destination_id);
 	//send_event_send_msg_pool(destination_id);
 
