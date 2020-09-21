@@ -294,7 +294,6 @@ event_inform(struct event_send_msg *msg){
                 print_pkt(data1);
         }
         #endif
-        
 }
 
 //int pktCount = 0;

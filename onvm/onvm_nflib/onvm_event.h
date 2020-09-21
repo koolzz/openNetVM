@@ -44,9 +44,10 @@
 
 #include <rte_malloc.h>
 #include <rte_memcpy.h>
-#include <netinet/ip.h>
+//#include <netinet/ip.h>
 #include <rte_ether.h>
 #include <rte_mbuf.h>
+#include <rte_ip.h>
 #include "onvm_common.h"
 
 #define MAX_EVENTS 10000
@@ -65,8 +66,8 @@
 
 uint64_t EVENT_BITMASK;
 struct rte_mempool *pubsub_msg_pool;
-struct rte_mempool *event_msg_pool;
-struct rte_mempool *event_send_msg_pool;
+//struct rte_mempool *event_msg_pool;
+//struct rte_mempool *event_send_msg_pool;
 
 /*****************EVENT IDS************************/
 // 4 bits represent a prefix, 0 is reserved => 15 max prefix variations
@@ -217,7 +218,7 @@ void send_event_mempool(uint16_t dest_id);
 /* For testing */
 void print_targets(struct event_tree_node *event);
 
-#if 0
+#if 1
 void print_pkt(struct rte_mbuf* pkt);
 
 void print_pkt(struct rte_mbuf* pkt){
@@ -226,7 +227,7 @@ void print_pkt(struct rte_mbuf* pkt){
         uint16_t type = rte_be_to_cpu_16(eth->ether_type);
         struct ipv4_hdr *ip = NULL;
         struct tcp_hdr *tcp = NULL;
-        if(type == ETH_P_IP){
+        if(type == ETHER_TYPE_IPv4){
                 ip = (struct ipv4_hdr *)(eth + 1);
                 if(ip->next_proto_id == IPPROTO_TCP){
                         tcp = (struct tcp_hdr *)((unsigned char *)ip + sizeof(struct ipv4_hdr));
@@ -237,7 +238,7 @@ void print_pkt(struct rte_mbuf* pkt){
         printf("Packet Src:%hhu.%hhu.%hhu.%hhu ", a, b, c, d);
 	uint32_t_to_char(rte_bswap32(ip->dst_addr), &m, &n, &p, &q);
 	printf("Packet Dst:%hhu.%hhu.%hhu.%hhu ", m, n, p, q);
-        printf("src port:%d, dst port:%d\n",rte_be_to_cpu_16(tcp->src_port),rte_be_to_cpu_16(tcp->dst_port));
+        printf("src port:%d, dst port:%d, tcp_flags:%x\n",rte_be_to_cpu_16(tcp->src_port),rte_be_to_cpu_16(tcp->dst_port),tcp->tcp_flags);
 	printf("\n");
 }
 #endif
@@ -677,7 +678,7 @@ int send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt)
         msg->send.event_id = event_id;
         msg->send.pkt = pkt;
 
-        #if 1
+        #if 0
         ret = onvm_nflib_send_a_msg_to_nf(dest_id, (void*)msg);
         while (ret != 0)
         {

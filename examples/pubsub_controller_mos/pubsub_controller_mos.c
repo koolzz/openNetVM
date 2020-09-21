@@ -282,12 +282,12 @@ send_event(uint64_t event_id, void *msg)
 	for (i = 0; i < event->subscriber_cnt; i++) {
                 //printf("event->subscribers[i]->id:%d\n",event->subscribers[i]->id);
 		nf_id = event->subscribers[i]->id;
-		ret = onvm_nflib_send_a_msg_to_nf(nf_id, msg);
-                //ret = onvm_nflib_send_msg_to_nf(nf_id, msg);
+		//ret = onvm_nflib_send_a_msg_to_nf(nf_id, msg);
+                ret = onvm_nflib_send_msg_to_nf(nf_id, msg);
                 while (ret != 0)
                 {
-                        ret = onvm_nflib_send_a_msg_to_nf(nf_id, msg);
-                        //ret = onvm_nflib_send_msg_to_nf(nf_id, msg);
+                        //ret = onvm_nflib_send_a_msg_to_nf(nf_id, msg);
+                        ret = onvm_nflib_send_msg_to_nf(nf_id, msg);
                 }
 	}
         
