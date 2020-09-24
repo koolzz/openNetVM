@@ -60,7 +60,7 @@
 #include "onvm_pkt_helper.h"
 #include "onvm_event.h"
 #define NF_TAG "flow_tracker"
-#define TBL_SIZE 100
+#define TBL_SIZE 1000
 #define EXPIRE_TIME 5
 #define PUBSUB_CONTROLLER_ID 2
 /*Struct that holds all NF state information */
@@ -163,7 +163,7 @@ clear_entries(struct state_info *state_info) {
                 return -1;
         }
 
-        printf("Clearing expired entries\n");
+        //printf("Clearing expired entries\n");
         struct flow_stats *data = NULL;
         struct onvm_ft_ipv4_5tuple *key = NULL;
         uint32_t next = 0;
@@ -180,7 +180,7 @@ clear_entries(struct state_info *state_info) {
                                 printf("Key should have been removed, but was not\n");
                                 state_info->num_stored++;
                         }
-			printf("++++++++++++++++Send END MSG++++++++++++\n");
+			//printf("++++++++++++++++Send END MSG++++++++++++\n");
 			send_event_data(FLOW_END_EVENT_ID, PUBSUB_CONTROLLER_ID, (void*)key);
                 }
         }
@@ -228,7 +228,7 @@ table_add_entry(struct onvm_ft_ipv4_5tuple *key, struct state_info *state_info, 
         if (unlikely(key == NULL || state_info == NULL)) {
                 return -1;
         }
-	printf("flow_tracker table_add_entry TBL_SIZE:%d,state_info->num_stored:%d\n",TBL_SIZE,state_info->num_stored);
+	//printf("flow_tracker table_add_entry TBL_SIZE:%d,state_info->num_stored:%d\n",TBL_SIZE,state_info->num_stored);
         if (TBL_SIZE - state_info->num_stored == 0) {
                 int ret = clear_entries(state_info);
                 if (ret < 0) {
@@ -246,7 +246,7 @@ table_add_entry(struct onvm_ft_ipv4_5tuple *key, struct state_info *state_info, 
         data->last_pkt_cycles = state_info->elapsed_cycles;
         data->is_active = 1;
         state_info->num_stored += 1;
-	printf("+++++++++++++Send NEW MSG+++++++++++++\n");
+	//printf("+++++++++++++Send NEW MSG+++++++++++++\n");
 	send_event_data(FLOW_NEW_EVENT_ID, PUBSUB_CONTROLLER_ID, (void*)pkt);
 
         return 0;
@@ -281,7 +281,7 @@ table_lookup_entry(struct rte_mbuf *pkt, struct state_info *state_info) {
                 data->last_pkt_cycles = state_info->elapsed_cycles;
 		if(data->pkt_count >= 5)
 		{
-			printf("++++++++++++Send LARGE MSG++++++++++\n");
+			//printf("++++++++++++Send LARGE MSG++++++++++\n");
 			send_event_data(FLOW_LARGE_EVENT_ID, PUBSUB_CONTROLLER_ID, (void*)pkt);
 		}
                 return 0;
@@ -294,7 +294,7 @@ callback_handler(__attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx)
 
         if ((state_info->elapsed_cycles - state_info->last_cycles) / rte_get_timer_hz() > state_info->print_delay) {
                 state_info->last_cycles = state_info->elapsed_cycles;
-                do_stats_display(state_info);
+                //do_stats_display(state_info);
         }
 
         return 0;
@@ -319,6 +319,7 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
         return 0;
 }
 
+#if 0
 void
 nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
         printf("Hi boi %d\n", nf_local_ctx->nf->instance_id);
@@ -336,6 +337,42 @@ nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
 	publish_event(PUBSUB_CONTROLLER_ID,FLOW_END_EVENT_ID);
 	publish_event(PUBSUB_CONTROLLER_ID,FLOW_LARGE_EVENT_ID);
 }
+#else
+void
+nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
+        int retval = init_pubsub_msg_pool();
+        if (retval != 0) {
+                rte_exit(EXIT_FAILURE, "Cannot create pubsub message pool: %s\n", rte_strerror(rte_errno));
+        }
+	pubsub_msg_pool = lookup_pubsub_msg_pool();
+	if(pubsub_msg_pool == NULL)
+		exit(-1);
+	else{
+		printf("Get pubsub_msg_pool Successful...\n");
+	}
+
+        struct event_msg *msg;
+        int ret = rte_mempool_get(pubsub_msg_pool, (void**)&msg);
+        if (ret != 0) {
+                RTE_LOG(INFO, APP, "Unable to allocate pubsub_msg_pool from pool when trying to send msg to nf\n");
+                return ;
+        }
+	
+	msg->type = RETRIEVE;
+        struct event_retrieve_data *data = rte_zmalloc("ev ret data", sizeof(struct event_retrieve_data), 0);
+	msg->retrieve = data;
+        onvm_nflib_send_msg_to_nf(PUBSUB_CONTROLLER_ID, (void*)msg);
+        while (data->done != 1)
+		sleep(1);
+	//publish_event(PUBSUB_CONTROLLER_ID,FLOW_TCP_SYN_EVENT_ID);
+	//publish_event(PUBSUB_CONTROLLER_ID,FLOW_TCP_ESTABLISH_EVENT_ID);
+	//publish_event(PUBSUB_CONTROLLER_ID,FLOW_TCP_END_EVENT_ID);
+        publish_event(PUBSUB_CONTROLLER_ID,FLOW_NEW_EVENT_ID);
+	publish_event(PUBSUB_CONTROLLER_ID,FLOW_END_EVENT_ID);
+	publish_event(PUBSUB_CONTROLLER_ID,FLOW_LARGE_EVENT_ID);
+        printf("nf_setup done++++PUBSUB_CONTROLLER_ID:%d+++++++++\n",PUBSUB_CONTROLLER_ID);
+}
+#endif
 
 int
 main(int argc, char *argv[]) {

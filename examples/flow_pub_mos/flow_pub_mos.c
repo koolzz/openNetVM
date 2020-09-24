@@ -59,6 +59,11 @@ struct connection {
 	struct sockaddr_in addrs[2];   /* Address of a client and a serer */
 	int cli_state;                 /* TCP state of the client */
 	int svr_state;                 /* TCP state of the server */
+	int total_data_so_far;         /* The sum of TCP payload length so far*/
+	uint32_t start_time;
+	uint32_t latest_time;
+	struct ipv4_hdr *ip;
+	struct tcp_hdr *tcp;
 	TAILQ_ENTRY(connection) link;  /* link to next context in this core */
 };
 
@@ -71,7 +76,12 @@ int g_run_core;
 int destination_id;
 #endif
 
-//int testcount = 0;
+void print_mbuf(struct rte_mbuf *mbuf, int ts){
+	//printf("pkt_len:%d, data_len:%d, buf_len:%d, l2_len:%d, l3_len:%d, l4_len:%d \n", 
+	//	mbuf->pkt_len, mbuf->data_len, mbuf->buf_len, mbuf->l2_len, mbuf->l3_len, mbuf->l4_len);
+	print_pkt(mbuf);
+	//printf("time:%d\n",ts);
+}
 /*----------------------------------------------------------------------------*/
 #if 0
 void
@@ -235,6 +245,7 @@ cb_creation(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 
 	/* Fill values of the connection structure */
 	c->sock = sock;
+	c->total_data_so_far = 0;
 	if (mtcp_getpeername(mctx, c->sock, (void *)c->addrs, &addrslen,
 						//MOS_SIDE_BOTH) < 0) {
 						MOS_SIDE_CLI) < 0) {
@@ -252,16 +263,53 @@ cb_creation(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 		fprintf(stderr, "Failed to get packet context\n");
 		exit(-1);
 	}
-	if(pi!=NULL)
-	{
-		//printf("pkt_len:%d\n",((pi->p).pkt_buf)->pkt_len);
-		//printf("Send FLOW_TCP_SYN_EVENT_ID...\n");
-		#if SEND_ENABLE
-		send_event_data(FLOW_TCP_SYN_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
-		#endif
-	}
+	if(pi == NULL)
+		return;
+	c->total_data_so_far = pi->p.payloadlen;
+	c->start_time = pi->p.cur_ts;
+	//printf("++++++++++++start_time:%d++++++++++++++++++\n",c->start_time);
+	struct ipv4_hdr *ip;
+	struct tcp_hdr *tcp;
+	if (get_ip_tcp_hdr((pi->p).pkt_buf, &ip, &tcp)!=0)
+		return;
+
+	c->ip = ip;
+	c->tcp = tcp;
+	struct tcp_syn_event *syn_pkt;
+	int ret = rte_mempool_get(pubsub_msg_pool, (void**)&syn_pkt);
+	if (ret != 0) {
+      	RTE_LOG(INFO, APP, "Unable to allocate pubsub_msg_pool from pool when trying to send msg to nf\n");
+       	return;
+   	}
+	syn_pkt->flow_id = c->sock;
+		
+	printf("\nSend FLOW_TCP_SYN_EVENT_ID...\n");
+	print_mbuf((pi->p).pkt_buf, pi->p.cur_ts);
+	//printf("pi->p.payloadlen:%d\n",pi->p.payloadlen);
+	//send_event_data(FLOW_TCP_SYN_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
+	#if SEND_ENABLE
+	syn_pkt->iphdr = ip;
+	syn_pkt->tcphdr = tcp;
+	syn_pkt->mbuf = (pi->p).pkt_buf;
+	send_event_data(FLOW_TCP_SYN_EVENT_ID, destination_id, (void*)syn_pkt);
+	/*unsigned char a, b, c, d,m,n,p,q;
+    uint32_t_to_char(rte_bswap32(ip->src_addr), &a, &b, &c, &d);
+    printf("Packet Src:%hhu.%hhu.%hhu.%hhu ", a, b, c, d);
+	uint32_t_to_char(rte_bswap32(ip->dst_addr), &m, &n, &p, &q);
+	printf("Packet Dst:%hhu.%hhu.%hhu.%hhu ", m, n, p, q);*/
+	#endif
 }	
 #endif
+/*----------------------------------------------------------------------------*/
+static void
+cb_retransmission(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
+{
+	struct connection *c;
+
+	if (!(c = find_connection(mctx->cpu, sock)))
+		return;
+	printf("RESTRANSMISSION!!!!!!!!!!!!!\n");
+}
 /*----------------------------------------------------------------------------*/
 /* Destroy connection structure */
 static void
@@ -295,7 +343,7 @@ cb_destroy(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 
 /*----------------------------------------------------------------------------*/
 /* get pkt and Send event_id and pkt  */
-#if 1
+#if 0
 static void
 send_pkt_to_dest(mctx_t mctx, int sock, int side, uint64_t event_id){
 	struct pkt_ctx *pi;
@@ -305,11 +353,12 @@ send_pkt_to_dest(mctx_t mctx, int sock, int side, uint64_t event_id){
 	}
 	if(pi!=NULL)
 	{
-		//printf("pkt_len:%d\n",((pi->p).pkt_buf)->pkt_len);
 		//printf("Send FLOW_TCP_ESTABLISH_EVENT_ID...\n");
-		//print_pkt((pi->p).pkt_buf);
+		print_mbuf((pi->p).pkt_buf);
+		printf("pi->p.payloadlen:%d\n",pi->p.payloadlen);
 		#if SEND_ENABLE
-		send_event_data(event_id, destination_id, (void*)(pi->p).pkt_buf);
+		//send_event_data(event_id, destination_id, (void*)(pi->p).pkt_buf);
+		
 		#endif
 	}
 	else{
@@ -332,6 +381,7 @@ cb_st_chg(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 	unsigned long long start_tsc = rdtscll();
 	#endif	
 	struct connection *c;
+	int ret;
 	socklen_t intlen = sizeof(int);
 
 	if (!(c = find_connection(mctx->cpu, sock)))
@@ -358,17 +408,62 @@ cb_st_chg(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 		tcp_state = c->svr_state;
 	}
 
+	struct pkt_ctx *pi;
+	if(mtcp_getlastbuf(mctx, sock, side, &pi) < 0){
+		fprintf(stderr, "Failed to get packet context\n");
+		exit(-1);
+	}
 	
 	if(tcp_state == TCP_ESTABLISHED)
 	{
+		if(pi == NULL)
+			return;
+		c->total_data_so_far += pi->p.payloadlen;
+		c->latest_time = pi->p.cur_ts;
+		struct ipv4_hdr *ip;
+		struct tcp_hdr *tcp;
+		if (get_ip_tcp_hdr((pi->p).pkt_buf, &ip, &tcp)!=0)
+			return;
 		printf(" Send TCP established!\n");
-		send_pkt_to_dest(mctx, sock, side,FLOW_TCP_ESTABLISH_EVENT_ID);
+		print_mbuf((pi->p).pkt_buf, pi->p.cur_ts);
+		printf("current time:%d\n", c->latest_time);
+		//send_pkt_to_dest(mctx, sock, side,FLOW_TCP_ESTABLISH_EVENT_ID);
+		struct tcp_established_event *tcp_est;
+		ret = rte_mempool_get(pubsub_msg_pool, (void**)&tcp_est);
+		if (ret != 0) {
+      		RTE_LOG(INFO, APP, "Unable to allocate pubsub_msg_pool from pool when trying to send msg to nf\n");
+       		return;
+   		}
+		tcp_est->flow_id = c->sock;
+		tcp_est->iphdr = ip;
+		tcp_est->tcphdr = tcp;
+		tcp_est->total_data_so_far = c->total_data_so_far;
+		tcp_est->mbuf = pi->p.pkt_buf;
+		send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, (void*)tcp_est);
+		
 	}
 	//else if(tcp_state == TCP_FIN_WAIT_1 || tcp_state == TCP_FIN_WAIT_2 || tcp_state== TCP_CLOSING || tcp_state == TCP_CLOSE_WAIT)
 	else if(tcp_state == TCP_CLOSED)
 	{
 		printf(" Send TCP CLOSE\n");
-		send_pkt_to_dest(mctx, sock, side, FLOW_TCP_END_EVENT_ID);
+		if(pi==NULL){
+			printf("Close pi==NULL\n");
+		}
+		//print_mbuf((pi->p).pkt_buf);
+		//printf("current time:%d\n", c->latest_time);
+		//send_pkt_to_dest(mctx, sock, side, FLOW_TCP_END_EVENT_ID);
+		struct tcp_close_event *tcp_end;
+		ret = rte_mempool_get(pubsub_msg_pool, (void**)&tcp_end);
+		if (ret != 0) {
+      		RTE_LOG(INFO, APP, "Unable to allocate pubsub_msg_pool from pool when trying to send msg to nf\n");
+       		return;
+   		}
+		tcp_end->flow_id = c->sock;
+		tcp_end->iphdr = c->ip;
+		tcp_end->tcphdr = c->tcp;
+		tcp_end->total_data = c->total_data_so_far;
+		tcp_end->total_time = c->latest_time - c->start_time;
+		send_event_data(FLOW_TCP_END_EVENT_ID, destination_id, (void*)tcp_end);
 	}
 	
 }
@@ -474,50 +569,53 @@ cb_pkt_content(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *a
 	#ifdef TIME_STAT
 	unsigned long long start_tsc = rdtscll();
 	#endif	
-	//struct pkt_info pi;
-	struct pkt_ctx *pi;
-	if(mtcp_getlastbuf(mctx, sock, side, &pi) < 0){
-		fprintf(stderr, "Failed to get packet context\n");
-		exit(-1);
-	}
+	
 
 	#ifdef TIME_STAT
 	UpdateStatCounter(&stat_cb_content, rdtscll() - start_tsc);	
 	#endif	
 
+	int ret;
 	struct connection *c;
 	if (!(c = find_connection(mctx->cpu, sock)))
 		return;
 
+	struct pkt_ctx *pi;
+	if(mtcp_getlastbuf(mctx, sock, side, &pi) < 0){
+		fprintf(stderr, "Failed to get packet context\n");
+		exit(-1);
+	}
+	if(pi == NULL)
+		return;
+	c->total_data_so_far += pi->p.payloadlen;
+	c->latest_time = pi->p.cur_ts;
 	if(c->cli_state == TCP_ESTABLISHED || c->svr_state == TCP_ESTABLISHED)
 	{		
-		#if 0
-		//char *pkt_sent = NULL;
-		if((strlen((char*)pi.payload) != 0) && (pi.payload != NULL))
-		{
-			/*pkt_sent = rte_zmalloc("ev msg", sizeof(char) * strlen((char*)pi.payload), 0);
-			rte_memcpy(pkt_sent, (char*)pi.payload, strlen((char*)pi.payload));
-			send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, (void*)pkt_sent);*/
-			//printf("send_event_data_msg++++++++++++1\n");
-			send_event_data_msg(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, (void*)pi.payload);
-			//printf("send_event_data_msg++++++++++++2\n");
-		}
-		else{
-			//printf("establish pkt is null\n");
-			send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, NULL);
-		}
-		#endif
-		//struct rte_mbuf *dpdk_buff = (struct rte_mbuf *)((pi->p).pkt_buf);
-		//PrintBuff((char*)(pi->p).pkt_buf);
-		//printf("strlen(pi.p->pkt_buf):%ld++++++++++++++\n",strlen((char*)((pi->p).pkt_buf)));
-		//printf("%d\n",dpdk_buff->pkt_len);
-		if(pi!=NULL)
-		{
-			//printf("Send FLOW_TCP_ESTABLISH_EVENT_ID...\n");
+		printf("Send ESTABLISHED\n");
+		print_mbuf((pi->p).pkt_buf, pi->p.cur_ts);
+		struct ipv4_hdr *ip;
+		struct tcp_hdr *tcp;
+		if (get_ip_tcp_hdr((pi->p).pkt_buf, &ip, &tcp)!=0)
+			return;
+		struct tcp_established_event *tcp_est;
+		ret = rte_mempool_get(pubsub_msg_pool, (void**)&tcp_est);
+		if (ret != 0) {
+      		RTE_LOG(INFO, APP, "Unable to allocate pubsub_msg_pool from pool when trying to send msg to nf\n");
+       		return;
+   		}
+		tcp_est->flow_id = c->sock;
+		tcp_est->iphdr = ip;
+		tcp_est->tcphdr = tcp;
+		tcp_est->total_data_so_far = c->total_data_so_far;
+		tcp_est->mbuf = pi->p.pkt_buf;
+		send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, (void*)tcp_est);
+
+		/*printf("Send FLOW_TCP_ESTABLISH_EVENT_ID...\n");
+			print_mbuf((pi->p).pkt_buf);
+			printf("pi->p.payloadlen:%d\n",pi->p.payloadlen);
 			#if SEND_ENABLE
 			send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, (void*)(pi->p).pkt_buf);
-			#endif
-		}
+			#endif*/
 	}
 }
 #endif
@@ -557,6 +655,11 @@ RegisterCallbacks(mctx_t mctx, int sock, event_t ev_new_syn)
 		fprintf(stderr, "Failed to register cb_destroy()\n");
 		exit(-1); /* no point in proceeding if callback registration fails */
 	}	
+	if(mtcp_register_callback(mctx, sock, MOS_ON_CONN_END,
+				   MOS_HK_SND, cb_retransmission)){
+		fprintf(stderr, "Failed to register cb_retransmission()\n");
+		exit(-1);
+				   }
 	if (mtcp_register_callback(mctx, sock, MOS_ON_TCP_STATE_CHANGE,
 				   MOS_HK_SND, cb_st_chg)) {
 		fprintf(stderr, "Failed to register cb_st_chg()\n");

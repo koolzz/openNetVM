@@ -278,13 +278,23 @@ void
 event_inform(struct event_send_msg *msg){
         if(msg->event_id==FLOW_TCP_SYN_EVENT_ID)
 	{
-		//printf("************** FLOW_TCP_SYN_EVENT_ID  pktCount***********\n");
+		printf("************** FLOW_TCP_SYN_EVENT_ID  pktCount***********\n");
+                struct tcp_syn_event *syn_pkt = msg->pkt;
+                if(syn_pkt != NULL){
+                        printf("syn_pkt->flow_id:%d\n",syn_pkt->flow_id);
+                        print_pkt(syn_pkt->mbuf);
+                }
+
 	}
 	else if(msg->event_id==FLOW_TCP_ESTABLISH_EVENT_ID){
-	        //printf("************** FLOW_TCP_ESTABLISH_EVENT_ID pktCount***********\n");
+	        printf("************** FLOW_TCP_ESTABLISH_EVENT_ID pktCount***********\n");
+                struct tcp_established_event *tcp_est = msg->pkt;
+                if(tcp_est != NULL){
+                        print_pkt(tcp_est->mbuf);
+                }
 	}
 	else if(msg->event_id==FLOW_TCP_END_EVENT_ID){
-		//printf("************** FLOW_TCP_END_EVENT_ID  pktCount***********\n");
+		printf("************** FLOW_TCP_END_EVENT_ID  pktCount***********\n");
 	}
 
         #if 0

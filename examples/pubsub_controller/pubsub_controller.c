@@ -215,22 +215,22 @@ nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
         nf_local_ctx->nf = nf_local_ctx->nf;
         if (event_msg->type == SUBSCRIBE) {
 		printf("++++++++++++++++++++++++++SUBSCRIBE\n");
-                struct event_subscribe_data *msg = (struct event_subscribe_data *)event_msg->data;
+                struct event_subscribe_data *msg = (struct event_subscribe_data *)event_msg->subscribe;
                 subscribe_nf(msg->event, msg->id, msg->flow_id);
         } else if (event_msg->type == RETRIEVE) {
 		printf("++++++++++++++++++++++++++RETRIEVE\n");
-                struct event_retrieve_data *data = (struct event_retrieve_data*)event_msg->data;
+                struct event_retrieve_data *data = (struct event_retrieve_data*)event_msg->retrieve;
                 data->root = events[ROOT_EVENT_ID];
                 data->done = 1;
         } else if (event_msg->type == PUBLISH) {
 		printf("++++++++++++++++++++++++++PUBLISH\n");
-                struct event_publish_data *data = (struct event_publish_data*)event_msg->data;
+                struct event_publish_data *data = (struct event_publish_data*)event_msg->publish;
                 add_event(ROOT_EVENT, data->event);
                 events[data->event->event_id] = data->event;
                 data->done = 1;
         } else if (event_msg->type == SEND){
 		printf("++++++++++++++++++++++++++SEND\n");
-		struct onvm_event_msg *event_msg_data = (struct onvm_event_msg*)event_msg->data;
+		struct onvm_event_msg *event_msg_data = (struct onvm_event_msg*)event_msg->send;
 		send_event(event_msg_data->event_id,event_msg_data->pkt);
 	}
 

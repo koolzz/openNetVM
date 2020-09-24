@@ -61,6 +61,7 @@
 #define NF_TAG "flow_tracker_subscriber"
 #define TBL_SIZE 100
 #define EXPIRE_TIME 5
+#define Controller_id 2
 
 /* number of package between each print */
 static uint32_t print_delay = 1000000;
@@ -188,42 +189,57 @@ void
 nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
 	printf("Hi boi %d\n", nf_local_ctx->nf->instance_id);
 
-	struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
+        struct event_msg *msg;
+        int ret = rte_mempool_get(pubsub_msg_pool, (void**)&msg);
+        if (ret != 0) {
+            RTE_LOG(INFO, APP, "Unable to allocate pubsub_msg_pool from pool when trying to send msg to nf\n");
+            return;
+        }
         msg->type = RETRIEVE;
         struct event_retrieve_data *data = rte_zmalloc("ev ret data", sizeof(struct event_retrieve_data), 0);
-        msg->data = (void *)data;
-        onvm_nflib_send_msg_to_nf(2, (void*)msg);
+        msg->retrieve = (void *)data;
+        onvm_nflib_send_msg_to_nf(Controller_id, (void*)msg);
 	
 	while (data->done != 1)
                 sleep(1);
-
 	subscribe_nf(get_event(data->root, FLOW_NEW_EVENT_ID), 3, 1);
 	subscribe_nf(get_event(data->root, FLOW_LARGE_EVENT_ID), 3, 1);
 	subscribe_nf(get_event(data->root, FLOW_END_EVENT_ID), 3, 1);
 }
 
 void
-msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx){
-	printf("NF %d recieved msg\n", nf_local_ctx->nf->instance_id);
-	struct event_msg *msg1 = (struct event_msg *)msg_data;
-	struct onvm_event_msg *msg = (struct onvm_event_msg *) msg1->data;
-	if(msg->event_id==FLOW_NEW_EVENT_ID)
+event_information_print(struct event_send_msg *msg){
+        if(msg->event_id==FLOW_NEW_EVENT_ID)
 	{
-		printf("************** FLOW_NEW_EVENT_ID  pkt***********\n");
-		onvm_pkt_print((struct rte_mbuf *)msg->pkt);
-        	printf("********************end pkt*******************\n\n\n");
+		//printf("************** FLOW_NEW_EVENT_ID  pkt***********\n");
+		//onvm_pkt_print((struct rte_mbuf *)msg->pkt);
+        	//printf("********************end pkt*******************\n\n\n");
 	}
 	else if(msg->event_id==FLOW_END_EVENT_ID){
-		printf("************** FLOW_END_EVENT_ID  pkt***********\n");
+		/*printf("************** FLOW_END_EVENT_ID  pkt***********\n");
 		struct onvm_ft_ipv4_5tuple *key = (struct onvm_ft_ipv4_5tuple*)(msg->pkt);
 		_onvm_ft_print_key(key);
-                printf("********************end pkt*******************\n\n\n");
+                printf("********************end pkt*******************\n\n\n");*/
 	}
 	else if(msg->event_id==FLOW_LARGE_EVENT_ID){
-		printf("************** FLOW_LARGE_EVENT_ID  pkt***********\n");
-		onvm_pkt_print((struct rte_mbuf *)msg->pkt);
-		printf("********************end pkt*******************\n\n\n");
+		//printf("************** FLOW_LARGE_EVENT_ID  pkt***********\n");
+		//onvm_pkt_print((struct rte_mbuf *)msg->pkt);
+		//printf("********************end pkt*******************\n\n\n");
 	}
+}
+
+void
+msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx){
+	//printf("NF %d recieved msg\n", nf_local_ctx->nf->instance_id);
+	struct event_msg *msg1 = (struct event_msg *)msg_data;
+        if (msg1->type == SEND){
+                struct event_send_msg *msg = (struct event_send_msg *)&(msg1->send);
+                event_information_print(msg);
+                pubsub_msg_pool_put((void*)msg1);
+        }else {
+                printf("Recieved unknown event msg type - %d\n", msg1->type);
+        }
+	
 }
 
 static int
@@ -268,6 +284,16 @@ main(int argc, char *argv[]) {
                 } else {
                         rte_exit(EXIT_FAILURE, "Failed ONVM init\n");
                 }
+        }
+
+        pubsub_msg_pool = lookup_pubsub_msg_pool();
+        if(pubsub_msg_pool == NULL)
+        {
+                printf("Cannot find pubsub_msg_pool...\n");
+                exit(-1);
+        }
+        else{
+                printf("Find pubsub_msg_pool...\n");
         }
 
         argc -= arg_offset;
