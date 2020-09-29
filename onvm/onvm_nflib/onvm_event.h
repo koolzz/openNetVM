@@ -169,29 +169,32 @@ struct event_msg{
                 void *msg_data;
         };
 };
+ 
+// PUT these structs in onvm_event_tcp.h  (and also make onvm_event_l3.h, onvm_event_ids.h)
 
+// Happens once at the start of the 3way handshake
 struct tcp_syn_event {
    int flow_id;  // how to define this? Use the sock id for flow_pub_mos
-   struct ipv4_hdr *iphdr;
-   struct tcp_hdr *tcphdr; 
+   struct sockaddr_in addrs[2]; /* Address of a 0: client and a 1: server */
    struct rte_mbuf *mbuf; // race condition between subscriber and DPDK sending out
       // either need to clone or increase reference counter on packet so DPDK
       // won't free it after sending out
       // Subscriber will need to free the clone or reduce ref cnt when it finishes
 };
 
+// Happens for every packet that arrives after 3way handshake
 struct tcp_established_event {
    int flow_id;
-   struct ipv4_hdr *iphdr;
-   struct tcp_hdr *tcphdr; 
-  int total_data_so_far; // how much payload data has been sent in the TCP bytestream
-  struct rte_mbuf *mbuf;
+   struct sockaddr_in addrs[2]; /* Address of a 0: client and a 1: server */
+   int pkt_direction; /* 0: client->server, 1: server->client */
+   int total_data_so_far;  // how much payload data has been sent in the TCP bytestream
+   struct rte_mbuf *mbuf;
 };
 
+// happens once when connection ends
 struct tcp_close_event {
    int flow_id;
-   struct ipv4_hdr *iphdr; // where to get this?
-   struct tcp_hdr *tcphdr; 
+   struct sockaddr_in addrs[2];   /* Address of a 0: client and a 1: server */
    int total_data; // does MOS track this?
    int total_time; // does MOS track this?
 };
