@@ -292,6 +292,7 @@ event_inform(struct event_send_msg *msg){
                 if(tcp_est != NULL){
                         print_pkt(tcp_est->mbuf);
                 }
+                printf("pkt_direction:%d\n",tcp_est->pkt_direction);
 	}
 	else if(msg->event_id==FLOW_TCP_END_EVENT_ID){
 		printf("************** FLOW_TCP_END_EVENT_ID  pktCount***********\n");
@@ -315,7 +316,19 @@ msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx){
         
         if (msg1->type == SEND){
                 struct event_send_msg *msg = (struct event_send_msg *)&(msg1->send);
-                event_inform(msg);
+                
+                if(msg!=NULL)
+                {
+                        if(msg->pkt != NULL){
+                                //event_inform(msg);
+                                pubsub_msg_pool_put((void*)msg->pkt);
+                        }
+                        //event_inform(msg);
+                        pubsub_msg_pool_put((void*)msg);
+                }
+                else{
+                        printf("msg is NULL\n");
+                }
                 pubsub_msg_pool_put((void*)msg1);
         }else {
                 printf("Recieved unknown event msg type - %d\n", msg1->type);

@@ -265,7 +265,7 @@ void print_pkt(struct rte_mbuf* pkt){
 #if 1
 int init_pubsub_msg_pool(void){
         printf("Creating pubsub pool '%s' ...\n", PUBSUB_MSG_POOL_NAME);
-        pubsub_msg_pool = rte_mempool_create(PUBSUB_MSG_POOL_NAME, MAX_NFS * PUBSUB_MSG_QUEUE_SIZE*2, PUBSUB_INFO_SIZE,
+        pubsub_msg_pool = rte_mempool_create(PUBSUB_MSG_POOL_NAME, MAX_NFS * PUBSUB_MSG_QUEUE_SIZE*4, PUBSUB_INFO_SIZE,
                                          PUBSUB_MSG_CACHE_SIZE, 0, NULL, NULL, NULL, NULL, rte_socket_id(), NO_FLAGS);
 
         return (pubsub_msg_pool == NULL); /* 0 on success */
@@ -584,6 +584,7 @@ int send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt)
         int ret;
         struct event_msg *msg;
         
+        //memory leaking
         ret = rte_mempool_get(pubsub_msg_pool, (void**)&msg);
         if (ret != 0) {
                 RTE_LOG(INFO, APP, "Unable to allocate pubsub_msg_pool from pool when trying to send msg to nf\n");
@@ -605,6 +606,7 @@ int send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt)
         #else
         //send msgs one by one
         ret = onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
+        //Drop pkts
         while (ret != 0)
         {
                 ret = onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);

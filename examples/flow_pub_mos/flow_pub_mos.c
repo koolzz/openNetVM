@@ -276,17 +276,22 @@ cb_creation(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 		return;*/
 
 	struct tcp_syn_event *syn_pkt;
+	#if 1
 	int ret = rte_mempool_get(pubsub_msg_pool, (void**)&syn_pkt);
 	if (ret != 0) {
       	RTE_LOG(INFO, APP, "Unable to allocate pubsub_msg_pool from pool when trying to send msg to nf\n");
        	return;
    	}
+	#else
+	syn_pkt = rte_zmalloc("event data", sizeof(struct tcp_syn_event), 0);
+	#endif
 	rte_memcpy(syn_pkt->addrs, c->addrs, addrslen);
 	//struct sockaddr_in *addrs = calloc(sizeof(struct sockaddr_in), 1);
 	//rte_memcpy(addrs, c->addrs, addrslen);
 	//syn_pkt->addrs = addrs;
 	syn_pkt->flow_id = c->sock;	
 	syn_pkt->mbuf = (pi->p).pkt_buf;
+	//syn_pkt->mbuf = rte_pktmbuf_clone((pi->p).pkt_buf, pubsub_msg_pool);
 	//printf("\nSend FLOW_TCP_SYN_EVENT_ID...\n");
 	//print_mbuf((pi->p).pkt_buf, pi->p.cur_ts);
 	//printf("pi->p.payloadlen:%d\n",pi->p.payloadlen);
@@ -326,14 +331,16 @@ cb_destroy(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 	if (!(c = find_connection(mctx->cpu, sock)))
 		return;
 
-	#if 1
-	
 	struct tcp_close_event *tcp_end;
+	#if 0
 	int ret = rte_mempool_get(pubsub_msg_pool, (void**)&tcp_end);
 	if (ret != 0) {
       	RTE_LOG(INFO, APP, "Unable to allocate pubsub_msg_pool from pool when trying to send msg to nf\n");
        	return;
    	}
+	#else
+	tcp_end = rte_zmalloc("event data", sizeof(struct tcp_close_event), 0);
+	#endif
 	tcp_end->flow_id = c->sock;
 	tcp_end->total_data = c->total_data_so_far;
 	tcp_end->total_time = c->latest_time - c->start_time;
@@ -342,10 +349,9 @@ cb_destroy(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 	//struct sockaddr_in *addrs = calloc(sizeof(struct sockaddr_in), 1);
 	//rte_memcpy(addrs, c->addrs, addrslen);
 	//tcp_end->addrs = addrs;
-	printf("Send FLOW_TCP_END_EVENT_ID...\n");
+	//printf("Send FLOW_TCP_END_EVENT_ID...\n");
 	send_event_data(FLOW_TCP_END_EVENT_ID, destination_id, (void*)tcp_end);
 	
-	#endif
 
 	TAILQ_REMOVE(&g_sockq[mctx->cpu], c, link);
 	free(c);
@@ -392,7 +398,6 @@ cb_st_chg(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
 	unsigned long long start_tsc = rdtscll();
 	#endif	
 	struct connection *c;
-	int ret;
 	socklen_t intlen = sizeof(int);
 
 	if (!(c = find_connection(mctx->cpu, sock)))
@@ -435,11 +440,16 @@ cb_st_chg(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
     // printf("current time:%d\n", c->latest_time);
     // send_pkt_to_dest(mctx, sock, side,FLOW_TCP_ESTABLISH_EVENT_ID);
     struct tcp_established_event *tcp_est;
+	#if 0
+	int ret;
     ret = rte_mempool_get(pubsub_msg_pool, (void **)&tcp_est);
     if (ret != 0) {
             RTE_LOG(INFO, APP, "Unable to allocate pubsub_msg_pool from pool when trying to send msg to nf\n");
             return;
     }
+	#else
+	tcp_est = rte_zmalloc("event data", sizeof(struct tcp_established_event), 0);
+	#endif
 	if(side == MOS_SIDE_CLI){
 		tcp_est->pkt_direction = 0;
 	}
@@ -455,6 +465,7 @@ cb_st_chg(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *arg)
     tcp_est->flow_id = c->sock;
 	tcp_est->total_data_so_far = c->total_data_so_far;
     tcp_est->mbuf = pi->p.pkt_buf;
+	//tcp_est->mbuf = rte_pktmbuf_clone(pi->p.pkt_buf, pubsub_msg_pool);
     send_event_data(FLOW_TCP_ESTABLISH_EVENT_ID, destination_id, (void *)tcp_est);
 
 	#if 0
@@ -616,7 +627,7 @@ cb_pkt_content(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *a
 	UpdateStatCounter(&stat_cb_content, rdtscll() - start_tsc);	
 	#endif	
 
-	int ret;
+	
 	struct connection *c;
 	if (!(c = find_connection(mctx->cpu, sock)))
 		return;
@@ -635,14 +646,22 @@ cb_pkt_content(mctx_t mctx, int sock, int side, uint64_t events, filter_arg_t *a
 		//printf("Send ESTABLISHED\n");
 		//print_mbuf((pi->p).pkt_buf, pi->p.cur_ts);
 		struct tcp_established_event *tcp_est;
+		
+		#if 0
+		int ret;
 		ret = rte_mempool_get(pubsub_msg_pool, (void**)&tcp_est);
 		if (ret != 0) {
       		RTE_LOG(INFO, APP, "Unable to allocate pubsub_msg_pool from pool when trying to send msg to nf\n");
        		return;
    		}
+		#else
+		tcp_est = rte_zmalloc("event data", sizeof(struct tcp_established_event), 0);
+		#endif
+		
 		tcp_est->flow_id = c->sock;
 		tcp_est->total_data_so_far = c->total_data_so_far;
 		tcp_est->mbuf = pi->p.pkt_buf;
+		//tcp_est->mbuf = rte_pktmbuf_clone(pi->p.pkt_buf, pubsub_msg_pool);
 		if(side == MOS_SIDE_CLI)
 			tcp_est->pkt_direction = 0;
 		else

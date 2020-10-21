@@ -199,6 +199,46 @@ do_stats_display(struct rte_mbuf *pkt) {
         }
 }
 
+void 
+event_inform(struct event_send_msg *msg){
+        if(msg->event_id==FLOW_TCP_SYN_EVENT_ID)
+	{
+		printf("************** FLOW_TCP_SYN_EVENT_ID  pktCount***********\n");
+                struct tcp_syn_event *syn_pkt = (struct tcp_syn_event*)msg->pkt;
+                if(syn_pkt != NULL){
+                        printf("syn_pkt->flow_id:%d\n",syn_pkt->flow_id);
+                        if(syn_pkt->mbuf!=NULL){
+                                print_pkt(syn_pkt->mbuf);
+                                pubsub_msg_pool_put((void*)syn_pkt->mbuf);
+                        }
+                }
+
+	}
+	else if(msg->event_id==FLOW_TCP_ESTABLISH_EVENT_ID){
+	        printf("************** FLOW_TCP_ESTABLISH_EVENT_ID pktCount***********\n");
+                struct tcp_established_event *tcp_est = (struct tcp_established_event*)msg->pkt;
+                if(tcp_est != NULL){
+                        printf("pkt_direction:%d\n",tcp_est->pkt_direction);
+                        if(tcp_est->mbuf != NULL){
+                                print_pkt(tcp_est->mbuf);
+                                pubsub_msg_pool_put((void*)tcp_est->mbuf);
+                        }
+                }
+                
+	}
+	else if(msg->event_id==FLOW_TCP_END_EVENT_ID){
+		printf("************** FLOW_TCP_END_EVENT_ID  pktCount***********\n");
+	}
+
+        #if 0
+        struct rte_mbuf* data1 = (struct rte_mbuf*)msg->pkt;
+        if(data1!=NULL)
+        {
+                print_pkt(data1);
+        }
+        #endif
+}
+
 #if 0
 // when using zmalloc and copy data
 static void
@@ -331,8 +371,24 @@ nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
                 //pubsub_msg_pool_put((void*)event_msg);
         } else if (event_msg->type == SEND){                
                 #if 1
-                struct event_send_msg *event_msg_data = (struct event_send_msg*)&(event_msg->send);
-		send_event(event_msg_data->event_id, (void*)event_msg);
+                struct event_send_msg *msg = (struct event_send_msg*)&(event_msg->send);
+		//send_event(msg->event_id, (void*)event_msg);
+                if(msg!=NULL)
+                {
+                        if(msg->pkt != NULL){
+                                event_inform(msg);
+                                //pubsub_msg_pool_put((void*)msg->pkt);
+                                rte_free((void*)msg->pkt);    
+                        }
+                        //event_inform(msg);
+                        pubsub_msg_pool_put((void*)msg);
+                        //rte_free((void*)msg);
+                }
+                else{
+                        printf("msg is NULL\n");
+                }
+                pubsub_msg_pool_put((void*)event_msg);
+
                 #else
                         //struct event_send_msg *event_msg_data = (struct event_send_msg*)event_msg->data;
                         //if(event_msg_data->pkt!=NULL)
