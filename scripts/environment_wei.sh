@@ -1,7 +1,7 @@
-apt-get update
+sudo apt-get update
 sudo apt-get install build-essential linux-headers-$(uname -r) git
 sudo apt-get install libnuma-dev -y
-apt-get update
+#apt-get update
 
 #Path which may be modified
 #onvm-mos/core/src/Makefile.in needs to modify "ONVMPATH="
