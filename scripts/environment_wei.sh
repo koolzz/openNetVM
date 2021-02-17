@@ -1,3 +1,4 @@
+#If there is a problem when execute, please run those commands manually.
 sudo apt-get update
 sudo apt-get install build-essential linux-headers-$(uname -r) git
 sudo apt-get install libnuma-dev -y
@@ -5,8 +6,8 @@ sudo apt-get install libnuma-dev -y
 
 #Path which may be modified
 #onvm-mos/core/src/Makefile.in needs to modify "ONVMPATH="
-ONVMPATH=/users/weicuidi/openNetVM
-ONVMMOSPATH=/users/weicuidi/onvm-mos
+export ONVMPATH=/users/weicuidi/openNetVM
+export ONVMMOSPATH=/users/weicuidi/onvm-mos
 
 git clone git@github.com:chandaweia/openNetVM.git
 git clone git@github.com:chandaweia/onvm-mos.git
@@ -15,7 +16,7 @@ git checkout pub_sub_nf_tracker
 echo export ONVM_HOME=$(pwd) >> ~/.bashrc
 
 cd $ONVMMOSPATH
-git checkout onvm-mos-new
+git checkout onvm-mos-pubsub
 cd $ONVMMOSPATH/drivers/dpdk-18.11
 echo export RTE_SDK=$(pwd) >> ~/.bashrc
 echo export RTE_TARGET=x86_64-native-linuxapp-gcc >> ~/.bashrc
