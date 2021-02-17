@@ -38,3 +38,4 @@ make
 #onvm-mos
 cd $ONVMMOSPATH
 ./setup.sh --compile-dpdk
+./setup.sh --run-dpdk
