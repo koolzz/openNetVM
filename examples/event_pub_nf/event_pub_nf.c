@@ -178,18 +178,19 @@ nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
         msg->type = RETRIEVE;
         struct event_retrieve_data *data = rte_zmalloc("ev ret data", sizeof(struct event_retrieve_data), 0);
         msg->data = (void *)data;
-        onvm_nflib_send_msg_to_nf(1, (void*)msg);
+//        onvm_nflib_send_msg_to_nf(1, (void*)msg);
 
         while (data->done != 1)
                 sleep(1);
 
        
-        publish_new_event(PKT_TCP_EVENT_ID);
-        publish_new_event(PKT_TCP_FIN_EVENT_ID);
+//        publish_new_event(PKT_TCP_EVENT_ID);
+//        publish_new_event(PKT_TCP_FIN_EVENT_ID);
 
         //wait for the other NF to subscribe
         sleep(5);
 
+#if 0
         printf("Children of root    = %d, subs = %d\n", data->root->children_cnt, data->root->children[ROOT_EVENT_ID]->subscriber_cnt);
 
         printf("Is NF 2 subbed to root - %d (should be no)\n", nf_subscribed_to_event(data->root, ROOT_EVENT_ID, 2, 0));
@@ -200,7 +201,7 @@ nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
         printf("Is NF 4 subbed to pkt tcp fin - %d (should be no as wrong flow)\n", nf_subscribed_to_event(data->root, PKT_TCP_FIN_EVENT_ID, 4, 40));
         test_sending_event(PKT_TCP_EVENT_ID, 3);
         test_sending_event(PKT_TCP_FIN_EVENT_ID, 3);
-
+#endif
 }
 
 int

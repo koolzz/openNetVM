@@ -88,7 +88,7 @@ static uint32_t print_delay = 1000000;
 static uint32_t destination;
 
 void nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx);
-
+static void send_event(uint64_t event_id, void * pkt);
 void nf_setup(struct onvm_nf_local_ctx *nf_local_ctx);
 
 /*
@@ -178,6 +178,22 @@ do_stats_display(struct rte_mbuf *pkt) {
         }
 }
 
+static void
+send_event(uint64_t event_id, void *pkt)
+{
+	int i;
+	uint16_t nf_id;
+	struct event_tree_node *event;
+	
+	struct event_tree_node *root = events[ROOT_EVENT_ID];
+	event = get_event(root, event_id);
+
+	for (i = 0; i < event->subscriber_cnt; i++) {
+		nf_id = event->subscribers[i]->id;
+		send_event_data(event_id,nf_id,pkt);
+	}
+}
+
 static int
 packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
                __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
@@ -194,21 +210,31 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
 void
 nf_msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
         struct event_msg *event_msg = (struct event_msg*)msg_data;
+	printf("nf_msg_handler+++++++++++++++++++++++++\n");
 
         nf_local_ctx->nf = nf_local_ctx->nf;
         if (event_msg->type == SUBSCRIBE) {
-                struct event_subscribe_data *msg = (struct event_subscribe_data *)event_msg->data;
+		printf("++++++++++++++++++++++++++SUBSCRIBE\n");
+                struct event_subscribe_data *msg = (struct event_subscribe_data *)event_msg->subscribe;
                 subscribe_nf(msg->event, msg->id, msg->flow_id);
         } else if (event_msg->type == RETRIEVE) {
-                struct event_retrieve_data *data = (struct event_retrieve_data*)event_msg->data;
+		printf("++++++++++++++++++++++++++RETRIEVE\n");
+                struct event_retrieve_data *data = (struct event_retrieve_data*)event_msg->retrieve;
                 data->root = events[ROOT_EVENT_ID];
                 data->done = 1;
         } else if (event_msg->type == PUBLISH) {
-                struct event_publish_data *data = (struct event_publish_data*)event_msg->data;
+		printf("++++++++++++++++++++++++++PUBLISH\n");
+                struct event_publish_data *data = (struct event_publish_data*)event_msg->publish;
                 add_event(ROOT_EVENT, data->event);
                 events[data->event->event_id] = data->event;
                 data->done = 1;
-        } else {
+        } else if (event_msg->type == SEND){
+		printf("++++++++++++++++++++++++++SEND\n");
+		struct onvm_event_msg *event_msg_data = (struct onvm_event_msg*)event_msg->send;
+		send_event(event_msg_data->event_id,event_msg_data->pkt);
+	}
+
+	else {
                 printf("Recieved unknown event msg type - %d\n", event_msg->type);
         }
 }
@@ -225,18 +251,6 @@ nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
         events[ROOT_EVENT_ID] = ROOT_EVENT;
         events[PKT_EVENT_ID] = PKT_EVENT;
         events[FLOW_EVENT_ID] =  FLOW_EVENT;
-        /*
-        PKT_TCP_EVENT = gen_event_tree_node(PKT_TCP_EVENT_ID);
-        add_event_node_child(PKT_EVENT, PKT_TCP_EVENT);
-        PKT_TCP_SYN_EVENT = gen_event_tree_node(PKT_TCP_SYN_EVENT_ID);
-        PKT_TCP_FIN_EVENT = gen_event_tree_node(PKT_TCP_FIN_EVENT_ID);
-        PKT_TCP_DPI_EVENT = gen_event_tree_node(PKT_TCP_DPI_EVENT_ID);
-        add_event_node_child(PKT_TCP_EVENT, PKT_TCP_SYN_EVENT);
-        add_event_node_child(PKT_TCP_EVENT, PKT_TCP_FIN_EVENT);
-        add_event_node_child(PKT_TCP_EVENT, PKT_TCP_DPI_EVENT);
-
-        events[PKT_TCP_EVENT_ID] = PKT_TCP_EVENT;
-        */
         nf_local_ctx->nf->data = (void *)ROOT_EVENT;
 }
 

@@ -58,11 +58,11 @@
 #include "onvm_flow_table.h"
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
-
+#include "onvm_event.h"
 #define NF_TAG "flow_tracker"
-#define TBL_SIZE 100
+#define TBL_SIZE 1000
 #define EXPIRE_TIME 5
-
+#define PUBSUB_CONTROLLER_ID 2
 /*Struct that holds all NF state information */
 struct state_info {
         struct onvm_ft *ft;
@@ -82,6 +82,7 @@ struct flow_stats {
 
 struct state_info *state_info;
 
+void nf_setup(struct onvm_nf_local_ctx *nf_local_ctx);
 /*
  * Prints application arguments
  */
@@ -145,6 +146,7 @@ update_status(uint64_t elapsed_cycles, struct flow_stats *data) {
         }
         if ((elapsed_cycles - data->last_pkt_cycles) / rte_get_timer_hz() >= EXPIRE_TIME) {
                 data->is_active = 0;
+		
         } else {
                 data->is_active = 1;
         }
@@ -161,7 +163,7 @@ clear_entries(struct state_info *state_info) {
                 return -1;
         }
 
-        printf("Clearing expired entries\n");
+        //printf("Clearing expired entries\n");
         struct flow_stats *data = NULL;
         struct onvm_ft_ipv4_5tuple *key = NULL;
         uint32_t next = 0;
@@ -171,7 +173,6 @@ clear_entries(struct state_info *state_info) {
                 if (update_status(state_info->elapsed_cycles, data) < 0) {
                         return -1;
                 }
-
                 if (!data->is_active) {
                         ret = onvm_ft_remove_key(state_info->ft, key);
                         state_info->num_stored--;
@@ -179,6 +180,8 @@ clear_entries(struct state_info *state_info) {
                                 printf("Key should have been removed, but was not\n");
                                 state_info->num_stored++;
                         }
+			//printf("++++++++++++++++Send END MSG++++++++++++\n");
+			send_event_data(FLOW_END_EVENT_ID, PUBSUB_CONTROLLER_ID, (void*)key);
                 }
         }
 
@@ -219,13 +222,13 @@ do_stats_display(struct state_info *state_info) {
  * if so, it calls clear_entries() to free up space.
  */
 static int
-table_add_entry(struct onvm_ft_ipv4_5tuple *key, struct state_info *state_info) {
+table_add_entry(struct onvm_ft_ipv4_5tuple *key, struct state_info *state_info, struct rte_mbuf *pkt) {
         struct flow_stats *data = NULL;
 
         if (unlikely(key == NULL || state_info == NULL)) {
                 return -1;
         }
-
+	//printf("flow_tracker table_add_entry TBL_SIZE:%d,state_info->num_stored:%d\n",TBL_SIZE,state_info->num_stored);
         if (TBL_SIZE - state_info->num_stored == 0) {
                 int ret = clear_entries(state_info);
                 if (ret < 0) {
@@ -238,10 +241,14 @@ table_add_entry(struct onvm_ft_ipv4_5tuple *key, struct state_info *state_info) 
                 return -1;
         }
 
-        data->pkt_count = 0;
+        data->pkt_count = pkt->pkt_len;//For removing the error that pkt is not used
+	data->pkt_count = 0;
         data->last_pkt_cycles = state_info->elapsed_cycles;
         data->is_active = 1;
         state_info->num_stored += 1;
+	//printf("+++++++++++++Send NEW MSG+++++++++++++\n");
+	send_event_data(FLOW_NEW_EVENT_ID, PUBSUB_CONTROLLER_ID, (void*)pkt);
+
         return 0;
 }
 
@@ -265,13 +272,18 @@ table_lookup_entry(struct rte_mbuf *pkt, struct state_info *state_info) {
 
         int tbl_index = onvm_ft_lookup_key(state_info->ft, &key, (char **)&data);
         if (tbl_index == -ENOENT) {
-                return table_add_entry(&key, state_info);
+                return table_add_entry(&key, state_info,pkt);
         } else if (tbl_index < 0) {
                 printf("Some other error occurred with the packet hashing\n");
                 return -1;
         } else {
                 data->pkt_count += 1;
                 data->last_pkt_cycles = state_info->elapsed_cycles;
+		if(data->pkt_count >= 5)
+		{
+			//printf("++++++++++++Send LARGE MSG++++++++++\n");
+			send_event_data(FLOW_LARGE_EVENT_ID, PUBSUB_CONTROLLER_ID, (void*)pkt);
+		}
                 return 0;
         }
 }
@@ -282,7 +294,7 @@ callback_handler(__attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx)
 
         if ((state_info->elapsed_cycles - state_info->last_cycles) / rte_get_timer_hz() > state_info->print_delay) {
                 state_info->last_cycles = state_info->elapsed_cycles;
-                do_stats_display(state_info);
+                //do_stats_display(state_info);
         }
 
         return 0;
@@ -291,6 +303,7 @@ callback_handler(__attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx)
 static int
 packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
                __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
+
         if (!onvm_pkt_is_ipv4(pkt)) {
                 meta->destination = state_info->destination;
                 meta->action = ONVM_NF_ACTION_TONF;
@@ -300,12 +313,66 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
         if (table_lookup_entry(pkt, state_info) < 0) {
                 printf("Packet could not be identified or processed\n");
         }
-
         meta->destination = state_info->destination;
         meta->action = ONVM_NF_ACTION_TONF;
 
         return 0;
 }
+
+#if 0
+void
+nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
+        printf("Hi boi %d\n", nf_local_ctx->nf->instance_id);
+
+	struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
+        msg->type = RETRIEVE;
+        struct event_retrieve_data *data = rte_zmalloc("ev ret data", sizeof(struct event_retrieve_data), 0);
+        msg->data = (void *)data;
+        onvm_nflib_send_msg_to_nf(PUBSUB_CONTROLLER_ID, (void*)msg);
+
+        while (data->done != 1)
+                sleep(1);
+
+	publish_event(PUBSUB_CONTROLLER_ID,FLOW_NEW_EVENT_ID);
+	publish_event(PUBSUB_CONTROLLER_ID,FLOW_END_EVENT_ID);
+	publish_event(PUBSUB_CONTROLLER_ID,FLOW_LARGE_EVENT_ID);
+}
+#else
+void
+nf_setup(struct onvm_nf_local_ctx *nf_local_ctx) {
+        int retval = init_pubsub_msg_pool();
+        if (retval != 0) {
+                rte_exit(EXIT_FAILURE, "Cannot create pubsub message pool: %s\n", rte_strerror(rte_errno));
+        }
+	pubsub_msg_pool = lookup_pubsub_msg_pool();
+	if(pubsub_msg_pool == NULL)
+		exit(-1);
+	else{
+		printf("Get pubsub_msg_pool Successful...\n");
+	}
+
+        struct event_msg *msg;
+        int ret = rte_mempool_get(pubsub_msg_pool, (void**)&msg);
+        if (ret != 0) {
+                RTE_LOG(INFO, APP, "Unable to allocate pubsub_msg_pool from pool when trying to send msg to nf\n");
+                return ;
+        }
+	
+	msg->type = RETRIEVE;
+        struct event_retrieve_data *data = rte_zmalloc("ev ret data", sizeof(struct event_retrieve_data), 0);
+	msg->retrieve = data;
+        onvm_nflib_send_msg_to_nf(PUBSUB_CONTROLLER_ID, (void*)msg);
+        while (data->done != 1)
+		sleep(1);
+	//publish_event(PUBSUB_CONTROLLER_ID,FLOW_TCP_SYN_EVENT_ID);
+	//publish_event(PUBSUB_CONTROLLER_ID,FLOW_TCP_ESTABLISH_EVENT_ID);
+	//publish_event(PUBSUB_CONTROLLER_ID,FLOW_TCP_END_EVENT_ID);
+        publish_event(PUBSUB_CONTROLLER_ID,FLOW_NEW_EVENT_ID);
+	publish_event(PUBSUB_CONTROLLER_ID,FLOW_END_EVENT_ID);
+	publish_event(PUBSUB_CONTROLLER_ID,FLOW_LARGE_EVENT_ID);
+        printf("nf_setup done++++PUBSUB_CONTROLLER_ID:%d+++++++++\n",PUBSUB_CONTROLLER_ID);
+}
+#endif
 
 int
 main(int argc, char *argv[]) {
@@ -314,12 +381,16 @@ main(int argc, char *argv[]) {
         struct onvm_nf_function_table *nf_function_table;
         const char *progname = argv[0];
 
+	int i=0;
+	for(;i<argc;i++)
+		printf("argv[%d]:%s\n",i,argv[i]);
         nf_local_ctx = onvm_nflib_init_nf_local_ctx();
         onvm_nflib_start_signal_handler(nf_local_ctx, NULL);
 
         nf_function_table = onvm_nflib_init_nf_function_table();
         nf_function_table->pkt_handler = &packet_handler;
         nf_function_table->user_actions = &callback_handler;
+	nf_function_table->setup = &nf_setup;
 
         if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
                 onvm_nflib_stop(nf_local_ctx);
@@ -330,7 +401,6 @@ main(int argc, char *argv[]) {
                         rte_exit(EXIT_FAILURE, "Failed ONVM init\n");
                 }
         }
-
         argc -= arg_offset;
         argv += arg_offset;
 

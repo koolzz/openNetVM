@@ -129,7 +129,6 @@ parse_app_args(uint8_t max_ports, int argc, char *argv[]) {
             {"verbocity-level", no_argument, NULL, 'v'}, {"enable_shared_cpu", no_argument, NULL, 'c'}};
 
         progname = argv[0];
-
         while ((opt = getopt_long(argc, argvopt, "p:r:n:d:s:t:l:z:v:c", lgopts, &option_index)) != EOF) {
                 switch (opt) {
                         case 'p':

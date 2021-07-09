@@ -191,6 +191,10 @@ onvm_nflib_handle_msg(struct onvm_nf_msg *msg, struct onvm_nf_local_ctx *nf_loca
 int
 onvm_nflib_send_msg_to_nf(uint16_t dest_nf, void *msg_data);
 
+int
+onvm_nflib_send_a_msg_to_nf(uint16_t dest, void *msg_data);
+
+
 /**
  * Stop this NF and clean up its memory
  * Sends shutdown message to manager.
@@ -278,5 +282,13 @@ onvm_nflib_get_default_chain(void);
  */
 struct onvm_configuration *
 onvm_nflib_get_onvm_config(void);
+
+struct rte_mempool* onvm_nflib_get_onvm_nf_msg_pool(void);
+
+int onvm_nflib_send_pubsub_msg(uint16_t dest, void *msg_data, uint64_t event_id);
+
+int init_pubsub_event_msg_pool(void);
+
+int init_pubsub_event_send_msg_pool(void);
 
 #endif // _ONVM_NFLIB_H_

@@ -35,6 +35,8 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+DPDKPATH=/users/weicuidi/onvm-mos/drivers
 
 ifeq ($(RTE_SDK),)
 $(error "Please define RTE_SDK environment variable")
@@ -49,8 +51,17 @@ include $(RTE_SDK)/mk/rte.vars.mk
 
 RTE_TARGET ?= x86_64-native-linuxapp-gcc
 
+
+
 # binary name
 LIB    = libonvm.a
+
+#solve the issues that cannot find rte_common.h when making rte
+DPDK_INC=$(DPDKPATH)/dpdk/include
+DPDK_LIB=$(DPDKPATH)/dpdk/lib
+DPDK_MACHINE_FLAGS = $(shell cat $(DPDK_INC)/cflags.txt)
+INC += ${DPDK_MACHINE_FLAGS} -I${DPDK_INC} -include $(DPDK_INC)/rte_config.h
+LIBS += -export-dynamic -L$(DPDK_LIB)
 
 # all source are stored in SRCS-y
 SRCS-y := onvm_pkt_helper.c onvm_sc_common.c onvm_sc_mgr.c onvm_flow_table.c onvm_flow_dir.c onvm_nflib.c onvm_pkt_common.c onvm_config_common.c onvm_threading.c

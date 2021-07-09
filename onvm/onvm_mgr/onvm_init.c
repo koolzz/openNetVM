@@ -48,7 +48,7 @@
 ******************************************************************************/
 
 #include "onvm_mgr/onvm_init.h"
-
+#include <rte_ethdev.h>
 /********************************Global variables*****************************/
 
 struct onvm_nf *nfs = NULL;
@@ -60,6 +60,7 @@ struct nf_wakeup_info *nf_wakeup_infos = NULL;
 struct rte_mempool *pktmbuf_pool;
 struct rte_mempool *nf_init_cfg_pool;
 struct rte_mempool *nf_msg_pool;
+//struct rte_mempool *pubsub_msg_pool;
 struct rte_ring *incoming_msg_queue;
 uint16_t **services;
 uint16_t *nf_per_service_count;
@@ -159,7 +160,6 @@ init(int argc, char *argv[]) {
 
         /* get total number of ports */
         total_ports = rte_eth_dev_count_avail();
-
         /* set up array for NF tx data */
         mz_nf = rte_memzone_reserve(MZ_NF_INFO, sizeof(*nfs) * MAX_NFS, rte_socket_id(), NO_FLAGS);
         if (mz_nf == NULL)

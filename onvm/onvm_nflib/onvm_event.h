@@ -43,7 +43,11 @@
 #define _ONVM_EVENT_H_
 
 #include <rte_malloc.h>
-
+#include <rte_memcpy.h>
+//#include <netinet/ip.h>
+#include <rte_ether.h>
+#include <rte_mbuf.h>
+#include <rte_ip.h>
 #include "onvm_common.h"
 
 #define MAX_EVENTS 10000
@@ -54,12 +58,18 @@
 #define RETRIEVE 1
 #define SUBSCRIBE 2
 #define PUBLISH 3
+#define SEND 4
+#define MEMPOOL 5
+#define MEMPOOL1 6
+#define MEMPOOL2 7
+#define GETMEMPOOL 8
 
 uint64_t EVENT_BITMASK;
+struct rte_mempool *pubsub_msg_pool;
 
 /*****************EVENT IDS************************/
 // 4 bits represent a prefix, 0 is reserved => 15 max prefix variations
-#define ROOT_EVENT_ID 0
+#define ROOT_EVENT_ID 0 
 
 #define PKT_EVENT_ID 0x1
 #define PKT_TCP_EVENT_ID (PKT_EVENT_ID + (0x1<<4))
@@ -70,14 +80,25 @@ uint64_t EVENT_BITMASK;
 #define FLOW_EVENT_ID 0x2
 #define FLOW_TCP_EVENT_ID (FLOW_EVENT_ID + (0x1<<4))
 #define FLOW_TCP_TERM_EVENT_ID (FLOW_TCP_EVENT_ID + (0x1<<8))
+#define FLOW_NEW_EVENT_ID (FLOW_EVENT_ID + (0x2<<4))
+#define FLOW_END_EVENT_ID (FLOW_EVENT_ID + (0x3<<4))
+#define FLOW_LARGE_EVENT_ID (FLOW_EVENT_ID + (0x4<<4))
+
+#define FLOW_TCP_SYN_EVENT_ID (FLOW_TCP_EVENT_ID + (0x2<<8))
+#define FLOW_TCP_ESTABLISH_EVENT_ID (FLOW_TCP_EVENT_ID + (0x3<<8))
+#define FLOW_TCP_END_EVENT_ID (FLOW_TCP_EVENT_ID + (0x4<<8))
 
 #define STATS_EVENT_ID 0x3
-
 #define FLOW_REQ_EVENT_ID 0x4
-
 #define FLOW_DEST_EVENT_ID 0x5
-
 #define DATA_RDY_EVENT_ID 0x6
+
+#define PUBSUB_MSG_QUEUE_SIZE 4096
+#define PUBSUB_INFO_SIZE (sizeof(struct event_msg)+sizeof(struct event_send_msg))
+#define PUBSUB_MSG_CACHE_SIZE 32
+#define NO_FLAGS 0
+
+#define PUB_POOL 1
 /****************************************************/
 
 struct event_retrieve_data {
@@ -97,11 +118,6 @@ struct event_publish_data {
         int done;
 };
 
-struct event_msg {
-        int type; //retrieve or subscribe
-        void *data;
-};
-
 struct nf_subscriber {
         uint16_t id;
         uint8_t flows[MAX_FLOWS];
@@ -118,12 +134,69 @@ struct event_tree_node {
 
 struct event_tree {
         struct onvm_tree_node *children[MAX_EVENTS]; // sub events
-};
+}; 
+
+// Use a union to hold whichever data type we need
+// This might waste space if one type is much larger than the other
+/*union event_data {
+        struct event_send_msg send;
+        struct event_publish_data publish;
+        struct event_subscribe_data subscribe;
+        struct event_retrieve_data retrieve;
+};*/
 
 /* Sent to NF instead of pkts (Grace had the actual struct this is just a quick definition for testing purpouses */
-struct onvm_event_msg {
+struct event_send_msg {
         uint64_t event_id;
-        struct rte_mbuf *pkt;
+        void *pkt;      // TODO: rename to data
+};
+
+struct event_init_data {
+        int nf_id;
+        struct rte_mempool* mempool;
+};
+
+// TODO: Merge event_msg and event_send_msg into one struct. and call it struct pub_sub_msg
+struct event_msg{
+        int type; 
+        //void *data;
+        //union event_data *event_data;
+        union {
+                struct event_send_msg send;
+                struct event_publish_data *publish;
+                struct event_subscribe_data *subscribe;
+                struct event_retrieve_data *retrieve;
+                void *msg_data;
+        };
+};
+ 
+// PUT these structs in onvm_event_tcp.h  (and also make onvm_event_l3.h, onvm_event_ids.h)
+
+// Happens once at the start of the 3way handshake
+struct tcp_syn_event {
+   int flow_id;  // how to define this? Use the sock id for flow_pub_mos
+   struct sockaddr_in addrs[2]; /* Address of a 0: client and a 1: server */
+   struct rte_mbuf *mbuf; // race condition between subscriber and DPDK sending out
+      // either need to clone or increase reference counter on packet so DPDK
+      // won't free it after sending out
+      // Subscriber will need to free the clone or reduce ref cnt when it finishes
+};
+
+// Happens for every packet that arrives after 3way handshake
+struct tcp_established_event {
+   int flow_id;
+   struct sockaddr_in addrs[2]; /* Address of a 0: client and a 1: server */
+   int pkt_direction; /* 0: client->server, 1: server->client */
+   int total_data_so_far;  // how much payload data has been sent in the TCP bytestream
+   struct rte_mbuf *mbuf;
+};
+
+// happens once when connection ends
+struct tcp_close_event {
+   int flow_id;
+   struct sockaddr_in addrs[2];   /* Address of a 0: client and a 1: server */
+   int total_data; // does MOS track this?
+   int total_time; // does MOS track this?
 };
 
 /* Public APIs */
@@ -131,20 +204,109 @@ struct event_tree_node *gen_event_tree_node(uint64_t event_id);
 struct nf_subscriber *gen_nf_subscriber(void);
 int add_event(struct event_tree_node *root, struct event_tree_node *child);
 void subscribe_nf(struct event_tree_node *event, uint16_t id, uint16_t flow_id);
+void subscribe_nf_noflow(struct event_tree_node *event, uint16_t nf_id);
 int nf_subscribed_to_event(struct event_tree_node *root, uint64_t event_id, uint16_t nf_id, uint16_t flow_id);
 struct event_tree_node *get_event(struct event_tree_node *root, uint64_t event_id);
 
 void test_sending_event(uint64_t event_id, uint16_t dest_id);
+int send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt);
 int add_event_node_child(struct event_tree_node *parent, struct event_tree_node *child);
-void publish_new_event(uint64_t event_id);
+int publish_event(uint16_t dest_controller,uint64_t event_id);
+
+struct rte_mempool *get_pubsub_msg_pool(void);
+int init_pubsub_msg_pool(void);
+void free_pubsub_msg_pool(void);
+void pubsub_msg_pool_put(void *msg);
+struct rte_mempool* lookup_pubsub_msg_pool(void);
+void pubsub_msg_pool_store(void *pool);
+void send_event_mempool(uint16_t dest_id);
+
+int get_ip_tcp_hdr(struct rte_mbuf* pkt, struct ipv4_hdr **iphdr, struct tcp_hdr **tcphdr);
+void print_pkt(struct rte_mbuf* pkt);
+
+#define uint32_t_to_char(ip, a, b, c, d) do {\
+                *a = (unsigned char)(ip >> 24 & 0xff);\
+                *b = (unsigned char)(ip >> 16 & 0xff);\
+                *c = (unsigned char)(ip >> 8 & 0xff);\
+                *d = (unsigned char)(ip & 0xff);\
+        } while (0)
 
 /* For testing */
 void print_targets(struct event_tree_node *event);
+
+#if 1
+void print_pkt(struct rte_mbuf* pkt){
+        printf("data1->pkt_len:%d\n",pkt->pkt_len);
+        struct ether_hdr *eth = rte_pktmbuf_mtod(pkt, struct ether_hdr*);
+        uint16_t type = rte_be_to_cpu_16(eth->ether_type);
+        struct ipv4_hdr *ip = NULL;
+        struct tcp_hdr *tcp = NULL;
+        if(type == ETHER_TYPE_IPv4){
+                ip = (struct ipv4_hdr *)(eth + 1);
+                if(ip->next_proto_id == IPPROTO_TCP){
+                        tcp = (struct tcp_hdr *)((unsigned char *)ip + sizeof(struct ipv4_hdr));
+                }
+        }
+        //uint32_t total_length = rte_cpu_to_be_16(ip->total_length);//The total data length(not include mac);
+        
+        //uint8_t hdr_len = 14 + sizeof(struct ipv4_hdr) + (tcp->data_off>>4)*4;
+        //printf("tcphdr_len16:%x, tcphdr_be16:%x, total hdr_len:%d\n",tcphdr_len16, tcphdr_be16, hdr_len);
+
+        unsigned char a, b, c, d,m,n,p,q;
+        uint32_t_to_char(rte_bswap32(ip->src_addr), &a, &b, &c, &d);
+        printf("Packet Src:%hhu.%hhu.%hhu.%hhu ", a, b, c, d);
+	uint32_t_to_char(rte_bswap32(ip->dst_addr), &m, &n, &p, &q);
+	printf("Packet Dst:%hhu.%hhu.%hhu.%hhu ", m, n, p, q);
+        printf("src port:%d, dst port:%d, tcp_flags:%x\n",rte_be_to_cpu_16(tcp->src_port),rte_be_to_cpu_16(tcp->dst_port),tcp->tcp_flags);
+	//printf("\n");
+}
+#endif
+
+#if 1
+int init_pubsub_msg_pool(void){
+        printf("Creating pubsub pool '%s' ...\n", PUBSUB_MSG_POOL_NAME);
+        pubsub_msg_pool = rte_mempool_create(PUBSUB_MSG_POOL_NAME, MAX_NFS * PUBSUB_MSG_QUEUE_SIZE*4, PUBSUB_INFO_SIZE,
+                                         PUBSUB_MSG_CACHE_SIZE, 0, NULL, NULL, NULL, NULL, rte_socket_id(), NO_FLAGS);
+
+        return (pubsub_msg_pool == NULL); /* 0 on success */
+        //return pubsub_msg_pool;
+}
+void free_pubsub_msg_pool(void){
+        printf("Freeing pubsub msg pool\n");
+        rte_mempool_free(pubsub_msg_pool);
+}
+void pubsub_msg_pool_put(void *msg){
+        if(pubsub_msg_pool == NULL)
+        {
+                printf("pubsub_msg_pool is NULL\n");
+                return;
+        }
+        rte_mempool_put(pubsub_msg_pool, (void*)msg);
+}
+struct rte_mempool *lookup_pubsub_msg_pool(void){
+        struct rte_mempool *ret_msg_pool = rte_mempool_lookup(_NF_MSG_POOL_NAME);
+        pubsub_msg_pool = rte_mempool_lookup(PUBSUB_MSG_POOL_NAME);
+
+        return ret_msg_pool; /* success or NULL */
+}
+void pubsub_msg_pool_store(void *pool){
+        pubsub_msg_pool = pool;
+}
+struct rte_mempool *get_pubsub_msg_pool(void){
+        struct rte_mempool *msg_pool = rte_mempool_lookup(PUBSUB_MSG_POOL_NAME);
+        if (msg_pool==NULL){
+                printf("pubsub_msg_pool is null\n");
+        }
+        return msg_pool;
+}
+
+#endif
 
 struct event_tree_node *
 gen_event_tree_node(uint64_t event_id) {
         struct event_tree_node *event;
         event = rte_zmalloc("event_node", sizeof(struct event_tree_node), 0);
+	//event = (struct event_tree_node*)malloc(sizeof(struct event_tree_node)*1);
         event->event_id = event_id;
 
         return event;
@@ -170,6 +332,7 @@ add_event_node_child(struct event_tree_node *parent, struct event_tree_node *chi
         }
         parent->children[parent->children_cnt] = child;
         parent->children_cnt++;
+	printf("add_event_node_child parent->event_id:%lu,children_cnt:%u\n",parent->event_id,parent->children_cnt-1);
         /* Copy all parent subscriptions to child */
         for (i = 0; i < parent->subscriber_cnt; i++) {
                 for (j = 0; j < MAX_FLOWS; j++) {
@@ -209,6 +372,32 @@ add_event(struct event_tree_node *root, struct event_tree_node *child) {
         }
         return add_event_node_child(cur, child);
 }
+
+#if 1
+void
+subscribe_nf_noflow(struct event_tree_node *event, uint16_t nf_id) {
+        int i;
+        struct nf_subscriber *subscriber;
+
+        subscriber = NULL;
+        for (i = 0; i < event->subscriber_cnt; i++) {
+                if (event->subscribers[i]->id == nf_id)
+                        subscriber = event->subscribers[i];
+        }
+
+        if (subscriber == NULL) {
+                subscriber = gen_nf_subscriber();
+                subscriber->id = nf_id;
+                event->subscribers[event->subscriber_cnt] = subscriber;
+                event->subscriber_cnt++;
+        }
+        //subscriber->flows[flow_id] = 1;
+
+        for (i = 0; i < event->children_cnt; i++) {
+                subscribe_nf_noflow(event->children[i], nf_id);
+        }
+}
+#endif
 
 void
 subscribe_nf(struct event_tree_node *event, uint16_t nf_id, uint16_t flow_id) {
@@ -279,6 +468,7 @@ print_targets(struct event_tree_node *event) {
         printf("\n");
 }
 
+#if 0
 void
 publish_new_event(uint64_t event_id) {
         struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
@@ -288,11 +478,166 @@ publish_new_event(uint64_t event_id) {
         msg->data = (void *)data;
         onvm_nflib_send_msg_to_nf(1, (void*)msg);
 }
+#endif
+
+#if PUB_POOL
+//pubsub_msg_pool
+int
+publish_event(uint16_t dest_controller,uint64_t event_id) {
+        int ret;
+        struct event_msg *msg;
+        ret = rte_mempool_get(pubsub_msg_pool, (void**)&msg);
+        if (ret != 0) {
+                RTE_LOG(INFO, APP, "Unable to allocate pubsub_msg_pool from pool when trying to send msg to nf\n");
+                return ret;
+        }
+        msg->type = PUBLISH;
+        struct event_publish_data *data = rte_zmalloc("ev pub data", sizeof(struct event_publish_data), 0);
+        data->event = gen_event_tree_node(event_id);
+        msg->publish = data;
+        
+        onvm_nflib_send_msg_to_nf(dest_controller, (void*)msg);
+        return 0;
+}
+#else
+//zmalloc
+void
+publish_event(uint16_t dest_controller,uint64_t event_id) {
+        struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
+        msg->type = PUBLISH;
+        struct event_publish_data *data = rte_zmalloc("ev pub data", sizeof(struct event_publish_data), 0);
+        data->event = gen_event_tree_node(event_id);
+        msg->data = (void *)data;
+        onvm_nflib_send_msg_to_nf(dest_controller, (void*)msg);
+}
+#endif
+
+#if 0
+void
+publish_event1(struct event_tree_node** events, struct event_tree_node *root, uint64_t event_id){
+        
+        struct event_publish_data *data = rte_zmalloc("ev pub data", sizeof(struct event_publish_data), 0);
+        
+        data->event = gen_event_tree_node(event_id);
+        add_event(root, data->event);
+        events[data->event->event_id] = data->event;
+}
+#endif
 
 void
 test_sending_event(uint64_t event_id, uint16_t dest_id) {
-        struct onvm_event_msg *msg = rte_zmalloc("ev msg", sizeof(struct onvm_event_msg), 0);
+        struct event_send_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_send_msg), 0);
         msg->event_id = event_id;
         onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
 }
+
+
+#if 0
+//for pubsub_msg_pool
+int send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt)
+{
+        int ret;
+        struct event_msg *msg;
+        
+        ret = rte_mempool_get(pubsub_msg_pool, (void**)&msg);
+        if (ret != 0) {
+                RTE_LOG(INFO, APP, "Unable to allocate pubsub_msg_pool from pool when trying to send msg to nf\n");
+                return ret;
+        }
+
+        struct event_send_msg *msg_event;
+        ret = rte_mempool_get(pubsub_msg_pool, (void**)&msg_event);
+        if (ret != 0) {
+                RTE_LOG(INFO, APP, "Unable to allocate pubsub_msg_pool from pool when trying to send msg to nf\n");
+                return ret;
+        }
+
+        msg_event->event_id = event_id;
+        msg_event->pkt = pkt;
+	
+        msg->type = SEND;
+        msg->send = *msg_event;
+        //msg->data = (void *)msg_event;
+
+        #if 1
+        ret = onvm_nflib_send_a_msg_to_nf(dest_id, (void*)msg);
+        while (ret != 0)
+        {
+                ret = onvm_nflib_send_a_msg_to_nf(dest_id, (void*)msg);
+                //printf("onvm_event.h onvm_nflib_send_msg_to_nf\n");
+                //exit(-1);
+        }
+        #else
+        //send msgs one by one
+        ret = onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
+        while (ret != 0)
+        {
+                ret = onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
+        }
+        #endif
+        return ret;
+
+}
+#endif
+int send_event_data(uint64_t event_id, uint16_t dest_id, void *pkt)
+{
+        int ret;
+        struct event_msg *msg;
+        
+        //memory leaking
+        ret = rte_mempool_get(pubsub_msg_pool, (void**)&msg);
+        if (ret != 0) {
+                RTE_LOG(INFO, APP, "Unable to allocate pubsub_msg_pool from pool when trying to send msg to nf\n");
+                return ret;
+        }
+	
+        msg->type = SEND;
+        msg->send.event_id = event_id;
+        msg->send.pkt = pkt;
+
+        #if 0
+        ret = onvm_nflib_send_a_msg_to_nf(dest_id, (void*)msg);
+        while (ret != 0)
+        {
+                ret = onvm_nflib_send_a_msg_to_nf(dest_id, (void*)msg);
+                //printf("onvm_event.h onvm_nflib_send_msg_to_nf\n");
+                //exit(-1);
+        }
+        #else
+        //send msgs one by one
+        ret = onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
+        //Drop pkts
+        while (ret != 0)
+        {
+                ret = onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
+        }
+        #endif
+        return ret;
+
+}
+void send_event_mempool(uint16_t dest_id){
+        struct event_msg *msg = rte_zmalloc("ev msg", sizeof(struct event_msg), 0);
+        msg->type = MEMPOOL;
+        msg->msg_data = (void*)pubsub_msg_pool;
+        onvm_nflib_send_msg_to_nf(dest_id, (void*)msg);
+}
+
+int get_ip_tcp_hdr(struct rte_mbuf* pkt, struct ipv4_hdr **iphdr, struct tcp_hdr **tcphdr){
+        //printf("data1->pkt_len:%d\n",pkt->pkt_len);
+        struct ether_hdr *eth = rte_pktmbuf_mtod(pkt, struct ether_hdr*);
+        uint16_t type = rte_be_to_cpu_16(eth->ether_type);
+        struct ipv4_hdr *ip;
+        struct tcp_hdr *tcp;
+        if(type == ETHER_TYPE_IPv4){
+                ip = (struct ipv4_hdr *)(eth + 1);
+                if(ip->next_proto_id == IPPROTO_TCP){
+                        tcp = (struct tcp_hdr *)((unsigned char *)ip + sizeof(struct ipv4_hdr));
+                        *iphdr = ip;
+                        *tcphdr = tcp;
+                        return 0;  //success
+                }
+        }
+        return -1;  //failed
+}
+
 #endif  // _ONVM_EVENT_H_

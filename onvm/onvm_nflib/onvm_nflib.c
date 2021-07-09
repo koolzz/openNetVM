@@ -55,7 +55,7 @@
 
 /******************************DPDK libraries*********************************/
 #include "rte_malloc.h"
-
+#include "rte_cycles.h"
 /*****************************Internal headers********************************/
 
 #include "onvm_includes.h"
@@ -70,6 +70,8 @@
 #define NF_MODE_RING 2
 
 #define ONVM_NO_CALLBACK NULL
+
+#define SEND_MSG_SIZE 256
 
 /******************************Global Variables*******************************/
 
@@ -95,6 +97,8 @@ static struct rte_mempool *nf_init_cfg_mp;
 // Shared pool for mgr <--> NF messages
 static struct rte_mempool *nf_msg_pool;
 
+//static struct rte_mempool *pubsub_msg_pool;
+
 // Global NF context to manage signal termination
 static struct onvm_nf_local_ctx *main_nf_local_ctx;
 
@@ -109,6 +113,22 @@ struct onvm_configuration *onvm_config;
 
 /* Flag to check if shared core mutex sleep/wakeup is enabled */
 uint8_t ONVM_NF_SHARE_CORES;
+
+struct msgs_buffer{
+        uint16_t count;
+        void *data[SEND_MSG_SIZE];
+};
+struct msgs_buffer *msgs_buffer ;
+
+struct event_msg {
+        int type; 
+        void *data;
+};
+/* Sent to NF instead of pkts (Grace had the actual struct this is just a quick definition for testing purpouses */
+struct onvm_event_msg {
+        uint64_t event_id;
+        void *pkt;   
+};
 
 /***********************Internal Functions Prototypes*************************/
 
@@ -205,6 +225,12 @@ onvm_nflib_lookup_shared_structs(void);
 static void
 onvm_nflib_parse_config(struct onvm_configuration *onvm_config);
 
+static void msgs_buffer_init(void){
+
+        msgs_buffer = rte_zmalloc("ev msg", sizeof(struct msgs_buffer), 0);
+        msgs_buffer->count = 0;
+}
+
 /*
  * Entry point of the NF main loop
  *
@@ -231,6 +257,24 @@ void
 onvm_nflib_handle_signal(int signal);
 
 /************************************API**************************************/
+
+#if 0
+int onvm_nflib_init_event_msg_pool(void){
+        printf("Creating pubsub event msg pool '%s' ...\n", PUBSUB_EVENT_MSG_POOL_NAME);
+        event_msg_pool = rte_mempool_create(PUBSUB_EVENT_MSG_POOL_NAME, MAX_NFS * PUBSUB_MSG_QUEUE_SIZE, PUBSUB_INFO_SIZE,
+                                         PUBSUB_MSG_CACHE_SIZE, 0, NULL, NULL, NULL, NULL, rte_socket_id(), NO_FLAGS);
+
+        return (event_msg_pool == NULL); /* 0 on success */
+}
+
+int onvm_nflib_init_event_send_msg_pool(void){
+        printf("Creating pubsub event send msg pool '%s' ...\n", PUBSUB_EVENT_SEND_MSG_POOL_NAME);
+        event_send_msg_pool = rte_mempool_create(PUBSUB_EVENT_SEND_MSG_POOL_NAME, MAX_NFS * PUBSUB_MSG_QUEUE_SIZE, PUBSUB_INFO_SIZE,
+                                         PUBSUB_MSG_CACHE_SIZE, 0, NULL, NULL, NULL, NULL, rte_socket_id(), NO_FLAGS);
+
+        return (event_send_msg_pool == NULL); /* 0 on success */
+}
+#endif
 
 struct onvm_nf_local_ctx *
 onvm_nflib_init_nf_local_ctx(void) {
@@ -337,6 +381,8 @@ onvm_nflib_init(int argc, char *argv[], const char *nf_tag, struct onvm_nf_local
         /* Reset getopt global variables opterr and optind to their default values */
         opterr = 0;
         optind = 1;
+
+        msgs_buffer_init();
 
         /* Lookup the info shared or created by the manager */
         onvm_nflib_lookup_shared_structs();
@@ -533,6 +579,7 @@ onvm_nflib_run(struct onvm_nf_local_ctx *nf_local_ctx) {
 
 void *
 onvm_nflib_thread_main_loop(void *arg) {
+        printf("onvm_nflib_thread_main_loop++++++++++++++++++\n");
         struct rte_mbuf *pkts[PACKET_READ_SIZE];
         struct onvm_nf_local_ctx *nf_local_ctx;
         struct onvm_nf *nf;
@@ -554,18 +601,19 @@ onvm_nflib_thread_main_loop(void *arg) {
                 nf->function_table->setup(nf_local_ctx);
 
         start_time = rte_get_tsc_cycles();
+	//printf("nf_local_ctx->keep_running:%d,main_nf_local_ctx->keep_running:%d\n",rte_atomic16_read(nf_local_ctx->keep_running),rte_atomic16_read(main_nf_local_ctx->keep_running));
         for (;rte_atomic16_read(&nf_local_ctx->keep_running) && rte_atomic16_read(&main_nf_local_ctx->keep_running);) {
+		//printf("nflib111111111\n");
                 nb_pkts_added =
                         onvm_nflib_dequeue_packets((void **)pkts, nf_local_ctx, nf->function_table->pkt_handler);
-
                 if (likely(nb_pkts_added > 0)) {
                         onvm_pkt_process_tx_batch(nf->nf_tx_mgr, pkts, nb_pkts_added, nf);
                 }
-
                 /* Flush the packet buffers */
                 onvm_pkt_enqueue_tx_thread(nf->nf_tx_mgr->to_tx_buf, nf);
                 onvm_pkt_flush_all_nfs(nf->nf_tx_mgr, nf);
 
+                //onvm_nflib_thread_main_loop -> onvm_nflib_dequeue_messages -> onvm_nflib_handle_msg -> msg_handler
                 onvm_nflib_dequeue_messages(nf_local_ctx);
                 if (nf->function_table->user_actions != ONVM_NO_CALLBACK) {
                         rte_atomic16_set(&nf_local_ctx->keep_running,
@@ -622,6 +670,7 @@ onvm_nflib_nf_ready(struct onvm_nf *nf) {
 
         startup_msg->msg_type = MSG_NF_READY;
         startup_msg->msg_data = nf;
+	
         ret = rte_ring_enqueue(mgr_msg_queue, startup_msg);
         if (ret < 0) {
                 rte_mempool_put(nf_msg_pool, startup_msg);
@@ -648,7 +697,7 @@ onvm_nflib_handle_msg(struct onvm_nf_msg *msg, struct onvm_nf_local_ctx *nf_loca
                         onvm_nflib_scale((struct onvm_nf_scale_info*)msg->msg_data);
                         break;
                 case MSG_FROM_NF:
-                        RTE_LOG(INFO, APP, "Recieved MSG from other NF\n");
+                        //RTE_LOG(INFO, APP, "Received MSG from other NF\n");
                         if (nf_local_ctx->nf->function_table->msg_handler != NULL) {
                                 nf_local_ctx->nf->function_table->msg_handler(msg->msg_data, nf_local_ctx);
                         }
@@ -661,6 +710,62 @@ onvm_nflib_handle_msg(struct onvm_nf_msg *msg, struct onvm_nf_local_ctx *nf_loca
         return 0;
 }
 
+#if 1
+struct rte_mempool* onvm_nflib_get_onvm_nf_msg_pool(void){
+        struct rte_mempool *ret_msg_pool = rte_mempool_lookup(_NF_MSG_POOL_NAME);
+        /*if (ret_msg_pool == NULL)
+                rte_exit(EXIT_FAILURE, "No NF Message mempool - bye\n");*/
+        return ret_msg_pool;
+}
+#endif
+
+static int
+onvm_nflib_send_msgs_to_nf(uint16_t dest, struct msgs_buffer *msgs_buffer) {
+        void **buffer = msgs_buffer->data;
+        uint16_t count = msgs_buffer->count;
+        struct onvm_nf_msg *msgs[count];
+        int i;
+
+        int ret = rte_mempool_get_bulk(nf_msg_pool, (void**)(&msgs), count);
+        if(ret != 0){
+                RTE_LOG(INFO, APP, "Unable to allocate enough msgs from pool when trying to send msg to nf\n");
+                return ret;
+        }
+        
+        for(i = 0; i < count; i++){
+                msgs[i]->msg_type = MSG_FROM_NF;
+                msgs[i]->msg_data = buffer[i];
+        }
+
+        ret = rte_ring_enqueue_bulk(nfs[dest].msg_q, (void**)msgs, count, NULL);
+        while(ret == 0){
+                RTE_LOG(INFO, APP, "resend msgs to nf++++++++1\n");
+                ret = rte_ring_enqueue_bulk(nfs[dest].msg_q, (void**)msgs, count, NULL);
+                //rte_mempool_put_bulk(nf_msg_pool, (void**)msgs, count);
+        }
+        msgs_buffer->count = 0;
+        return ret;
+
+}
+
+int
+onvm_nflib_send_a_msg_to_nf(uint16_t dest, void *msg_data) {
+        int ret=0;
+
+        msgs_buffer->data[msgs_buffer->count] = msg_data;
+        msgs_buffer->count ++;
+
+        if(likely(msgs_buffer->count < SEND_MSG_SIZE-1)){
+                return 0;
+        }
+        else
+        {
+                ret = onvm_nflib_send_msgs_to_nf(dest, msgs_buffer);
+        }
+
+        return (ret < 0); //if ret==0, then return 1.
+}
+
 int
 onvm_nflib_send_msg_to_nf(uint16_t dest, void *msg_data) {
         int ret;
@@ -668,14 +773,28 @@ onvm_nflib_send_msg_to_nf(uint16_t dest, void *msg_data) {
 
         ret = rte_mempool_get(nf_msg_pool, (void**)(&msg));
         if (ret != 0) {
-                RTE_LOG(INFO, APP, "Oh the huge manatee! Unable to allocate msg from pool :(\n");
+                RTE_LOG(INFO, APP, "Unable to allocate msg from pool when trying to send msg to nf\n");
+                //exit(-1);
                 return ret;
         }
 
         msg->msg_type = MSG_FROM_NF;
         msg->msg_data = msg_data;
 
-        return rte_ring_enqueue(nfs[dest].msg_q, (void*)msg);
+        //int count = rte_ring_count(nfs[dest].msg_q);
+        /*while(rte_ring_full(nfs[dest].msg_q) ==1)
+        {
+                sleep(1);
+        }*/
+
+        ret = rte_ring_enqueue(nfs[dest].msg_q, (void*)msg);
+        if (ret != 0) {
+                /* ring is full so we need to free the object */
+                printf("onvm_nflib_send_msg_to_nf ring is full so we need to free the object\n");
+                rte_mempool_put(nf_msg_pool, msg);
+        }
+        
+        return ret;
 }
 
 void
@@ -897,6 +1016,7 @@ onvm_nflib_parse_config(struct onvm_configuration *config) {
 
 static inline uint16_t
 onvm_nflib_dequeue_packets(void **pkts, struct onvm_nf_local_ctx *nf_local_ctx, nf_pkt_handler_fn  handler) {
+        
         struct onvm_nf *nf;
         struct onvm_pkt_meta *meta;
         uint16_t i, nb_pkts;
@@ -940,7 +1060,7 @@ onvm_nflib_dequeue_packets(void **pkts, struct onvm_nf_local_ctx *nf_local_ctx, 
 
 static inline void
 onvm_nflib_dequeue_messages(struct onvm_nf_local_ctx *nf_local_ctx) {
-        struct onvm_nf_msg *msg;
+        
         struct rte_ring *msg_q;
 
         msg_q = nf_local_ctx->nf->msg_q;
@@ -949,10 +1069,29 @@ onvm_nflib_dequeue_messages(struct onvm_nf_local_ctx *nf_local_ctx) {
         if (likely(rte_ring_count(msg_q) == 0)) {
                 return;
         }
-        msg = NULL;
-        rte_ring_dequeue(msg_q, (void **)(&msg));
-        onvm_nflib_handle_msg(msg, nf_local_ctx);
-        rte_mempool_put(nf_msg_pool, (void *)msg);
+        //int q_count1 = rte_ring_count(msg_q);
+        //rte_ring_dequeue(msg_q, (void **)(&msg));
+        //rte_mempool_put(nf_msg_pool, (void *)msg);
+        uint16_t i, nb_msgs;
+        struct onvm_nf_msg *msgs[PACKET_READ_SIZE];
+        nb_msgs = rte_ring_dequeue_burst(msg_q, (void **)msgs, PACKET_READ_SIZE, NULL); //in here, we define the number of msgs is PACKET_READ_SIZE.
+        //int q_count2 = rte_ring_count(msg_q);
+        /* Possibly sleep if in shared core mode, otherwise return */
+        //I'm not sure whether this part should be added. ???
+        /*if (unlikely(nb_msgs == 0)) {
+                if (ONVM_NF_SHARE_CORES) {
+                        rte_atomic16_set(nf->shared_core.sleep_state, 1);
+                        sem_wait(nf->shared_core.nf_mutex);
+                }
+                return;
+        }*/
+        
+        for(i = 0; i < nb_msgs; i++)
+        {
+                onvm_nflib_handle_msg(msgs[i], nf_local_ctx);
+                rte_mempool_put(nf_msg_pool, (void *)msgs[i]);
+        }
+
 }
 
 static void *

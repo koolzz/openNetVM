@@ -102,9 +102,9 @@ else
 fi
 
 sleep 1
-make config T=$RTE_TARGET
-make T=$RTE_TARGET -j 8
-make install T=$RTE_TARGET -j 8
+make config T=$RTE_TARGET DESTDIR=install 
+make T=$RTE_TARGET -j 8 DESTDIR=install 
+make install T=$RTE_TARGET -j 8 DESTDIR=install 
 
 # Refresh sudo
 sudo -v
